@@ -1,0 +1,40 @@
+from pydantic import BaseModel, Field, field_validator
+from typing import Any, Optional
+from datetime import datetime
+from uuid import UUID
+
+from core.models import TaskPriority, TaskStatus
+
+
+class TaskSubmitRequest(BaseModel):
+    """What the client sends when submitting a task."""
+    task_name: str = Field(
+        ...,
+        min_length = 1,
+        max_length = 255,
+        description = "Name of the rask to execute",
+        examples = ["send_email", "process_image", "generate_report"]
+    )
+    payload: dict[str, Any] = Field(
+        default_factory= dict,
+        description = "Data the task needs to execute"
+    )
+    priority: TaskPriority = Field(
+        default = TaskPriority.NORMAL,
+        description="Task priority. Higher = processed first"
+    )
+    max_retries: int = Field(
+        default = 3,
+        ge = 0,
+        le = 10,
+        description = "Maximum retry attempts on failure"
+    )
+
+    @field_validator("task_name")
+    @classmethod
+    def task_name_no_spaces(cls, v: str) -> str:
+        if " " in v:
+            raise ValueError("task_name cannot contain spaces. Use underscores: 'send_email'")
+        return v.lower()
+
+    

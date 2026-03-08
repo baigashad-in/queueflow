@@ -21,23 +21,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
 
----
-
-### Step 9 — .gitignore
-
-Open `.gitignore`:
-```
-__pycache__/
-*.pyc
-*.pyo
-.env
-.venv/
-venv/
-*.egg-info/
-.pytest_cache/
-.mypy_cache/
-dist/
-build/
-*.log

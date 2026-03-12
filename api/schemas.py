@@ -57,4 +57,9 @@ class TaskResponse(BaseModel):
     model_config = {"from_attributes": True}
      
 
-    
+class TaskListResponse(BaseModel):
+    """Paginated list of tasks."""
+    tasks: list[TaskResponse]
+    total: int
+    page: int
+    page_size:int

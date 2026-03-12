@@ -34,7 +34,27 @@ class TaskSubmitRequest(BaseModel):
     @classmethod
     def task_name_no_spaces(cls, v: str) -> str:
         if " " in v:
-            raise ValueError("task_name cannot contain spaces. Use underscores: 'send_email'")
+            raise ValueError("task_name cannot contain spaces. Use underscores: like 'send_email'")
         return v.lower()
+    
+
+class TaskResponse(BaseModel):
+    """What we return after a task is created."""
+    id: UUID
+    task_name: set
+    payload: dict[str, Any]
+    priority: int
+    status: TaskStatus
+    max_retries: int
+    retry_count: int
+    result: Optional[dict] = None
+    error_message: Optional[str] = None
+    created_at: datetime
+    update_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at : Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+     
 
     

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 import logging
+from typing import Optional
 
 
 
@@ -24,12 +25,48 @@ async def submit_task(
     In Phase 3, this will also push the task into the Redis queue.
     """
 
-task = TaskRecord(
-    task_name = request.task_name,
-    payload = request.payload,
-    priority = request.priority.value,
-    max_retries = request.max_retries,
-    status = TaskStatus.PENDING,
-)
+    task = TaskRecord(
+        task_name = request.task_name,
+        payload = request.payload,
+        priority = request.priority.value,
+        max_retries = request.max_retries,
+        status = TaskStatus.PENDING,
+    )
 
-    
+    session.add(task)
+    await session.commit()
+    await session.refresh(task)
+    logger.info(f"Task submitted: {task.id} [{task.task_name}] priority={task.priority}")
+
+    return task
+
+@router.get("/{task_id}", response_model = TaskResponse)
+async def list_tasks(
+    status: Optional[TaskStatus] = Query(None, description="Filter tasks by status"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+):
+    """List all tasks with optional status filter and pagination."""
+
+    # Base query
+    query = select(TaskRecord).order_by(TaskRecord.created_at.desc())
+    count_query = count_query.where(TaskRecord.status == status)
+
+    # Pagination
+    offset = (page - 1) * page_size
+    query = query.offset(offset).limit(page_size)
+
+    # Execute queries
+    result = await session.execute(query)
+    tasks = result.scalars().all()
+
+    total_result = await session.execute(count_query)
+    total_tasks = total_result.scalar()
+
+    return TaskListResponse(
+        tasks=tasks,
+        total=total,
+        page=page,
+        page_size=page_size,
+    )

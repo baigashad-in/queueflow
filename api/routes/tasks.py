@@ -51,7 +51,12 @@ async def list_tasks(
 
     # Base query
     query = select(TaskRecord).order_by(TaskRecord.created_at.desc())
-    count_query = count_query.where(TaskRecord.status == status)
+    count_query = select(func.count(TaskRecord.id))
+
+    # Apply filter
+    if status:
+        query = query.where(TaskRecord.status == status.value)
+        count_query = count_query.where(TaskRecord.status == status.value)
 
     # Pagination
     offset = (page - 1) * page_size
@@ -62,7 +67,7 @@ async def list_tasks(
     tasks = result.scalars().all()
 
     total_result = await session.execute(count_query)
-    total_tasks = total_result.scalar()
+    total = total_result.scalar()
 
     return TaskListResponse(
         tasks=tasks,

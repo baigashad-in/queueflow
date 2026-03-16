@@ -4,6 +4,7 @@ from sqlalchemy import select, func
 import logging
 
 
+
 from core.database import get_session, TaskRecord
 from core.models import TaskStatus
 from api.schemas import TaskSubmitRequest, TaskResponse, TaskListResponse
@@ -22,4 +23,13 @@ async def submit_task(
 
     In Phase 3, this will also push the task into the Redis queue.
     """
+
+task = TaskRecord(
+    task_name = request.task_name,
+    payload = request.payload,
+    priority = request.priority.value,
+    max_retries = request.max_retries,
+    status = TaskStatus.PENDING,
+)
+
     

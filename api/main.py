@@ -17,7 +17,9 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     logger.info("PyQueue API starting up...")
     logger.info(f"Environment: {settings.app_env}")
+
     yield
+
     logger.info("PyQueue API shutting down...")
 
 
@@ -27,6 +29,8 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+app.include_router(tasks_router)
 
 
 @app.get("/health")

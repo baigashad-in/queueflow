@@ -3,6 +3,8 @@ from contextlib import asynccontextmanager
 import logging
 
 from core.config import settings
+from core.database import init_db
+from api.routes.tasks import router as tasks_router
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),

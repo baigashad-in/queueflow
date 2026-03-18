@@ -75,3 +75,23 @@ async def list_tasks(
         page=page,
         page_size=page_size,
     )
+
+@router.get("/{task_id}", response_model = TaskResponse)
+async def get_task(
+    task_id: str, 
+    session: AsyncSession = Depends(get_session)
+    ):
+    """Get details of a specific task by ID."""
+    import uuid
+    try:
+        uuid_obj = uuid.UUID(task_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid task ID format")
+    result = await session.execute(
+        select(TaskRecord).where(TaskRecord.id == task_uuid)
+    )
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    return task

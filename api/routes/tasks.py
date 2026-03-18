@@ -84,7 +84,7 @@ async def get_task(
     """Get details of a specific task by ID."""
     import uuid
     try:
-        uuid_obj = uuid.UUID(task_id)
+        task_uuid = uuid.UUID(task_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid task ID format")
     result = await session.execute(

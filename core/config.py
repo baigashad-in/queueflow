@@ -1,6 +1,7 @@
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
+# from core.config import settings
+# print("DATABASE URL:", settings.database_url)
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(

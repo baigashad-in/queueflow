@@ -18,6 +18,10 @@ async def lifespan(app: FastAPI):
     logger.info("PyQueue API starting up...")
     logger.info(f"Environment: {settings.app_env}")
 
+    # Create database tables on startup
+    await init_db() # Initialize database tables on startup
+    logger.info("Database tables ready")
+    
     yield
 
     logger.info("PyQueue API shutting down...")

@@ -1,9 +1,11 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy import JSON, Column, Integer, String, DateTime, Text
+from sqlalchemy import Column, Integer, String, DateTime, Text, JSON
 from datetime import datetime, timezone
 import uuid
 from typing import AsyncGenerator
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
+
 
 from core.config import settings
 
@@ -25,8 +27,7 @@ class Base(DeclarativeBase):
 class TaskRecord(Base):
     """Permanent record of a task execution, stored in the database."""
     __tablename__ = "task_records"
-
-    id = Column(uuid.UUID(as_uuid = True), primary_key = True, default=uuid.uuid4)
+    id = Column(PGUUID(as_uuid=True), primary_key = True, default=uuid.uuid4)
 
     # What to run
     task_name = Column(String(255), nullable=False, index=True)
@@ -43,7 +44,7 @@ class TaskRecord(Base):
     retry_count = Column(Integer, nullable=False, default = 0)
 
     # Results
-    max_retries = Column(JSON, nullable = True)
+    max_results = Column(JSON, nullable = True)
     error_message = Column(Text, nullable=True)
 
     # Timestamps

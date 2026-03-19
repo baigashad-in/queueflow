@@ -11,7 +11,7 @@ from core.models import TaskStatus
 from api.schemas import TaskSubmitRequest, TaskResponse, TaskListResponse
 
 router = APIRouter(prefix = "/tasks", tags = ["Tasks"])
-logger = logging.getlogger(__name__)
+logger = logging.getLogger(__name__)
 
 @router.post("/", response_model = TaskResponse, status_code = 201)
 async def submit_task(

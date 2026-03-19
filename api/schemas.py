@@ -41,7 +41,7 @@ class TaskSubmitRequest(BaseModel):
 class TaskResponse(BaseModel):
     """What we return after a task is created."""
     id: UUID
-    task_name: set
+    task_name: str
     payload: dict[str, Any]
     priority: int
     status: TaskStatus
@@ -50,7 +50,7 @@ class TaskResponse(BaseModel):
     result: Optional[dict] = None
     error_message: Optional[str] = None
     created_at: datetime
-    update_at: datetime
+    updated_at: datetime
     started_at: Optional[datetime] = None
     completed_at : Optional[datetime] = None
 

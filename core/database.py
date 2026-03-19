@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import JSON, Column, Integer, String, DateTime, Text
 from datetime import datetime, timezone
 import uuid
@@ -19,14 +19,14 @@ AsyncSessionLocal = async_sessionmaker(engine,
                                        expire_on_commit=False,
                                        )
 
-class Base(declarative_base):
+class Base(DeclarativeBase):
     pass
 
 class TaskRecord(Base):
     """Permanent record of a task execution, stored in the database."""
     __tablename__ = "task_records"
 
-    id = Column(uuid.UUID(as_uuis = True), primary_key = True, default=uuid.uuid4)
+    id = Column(uuid.UUID(as_uuid = True), primary_key = True, default=uuid.uuid4)
 
     # What to run
     task_name = Column(String(255), nullable=False, index=True)

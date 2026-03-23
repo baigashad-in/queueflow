@@ -3,12 +3,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 import logging
 from typing import Optional
+import uuid
 
 
 
 from core.database import get_session, TaskRecord
 from core.models import TaskStatus
 from api.schemas import TaskSubmitRequest, TaskResponse, TaskListResponse
+from core.queue import push_task
 
 router = APIRouter(prefix = "/tasks", tags = ["Tasks"])
 logger = logging.getLogger(__name__)
@@ -38,9 +40,19 @@ async def submit_task(
     await session.refresh(task)
     logger.info(f"Task submitted: {task.id} [{task.task_name}] priority={task.priority}")
 
+    # Push into Redis priority queue
+    await push_task(str(task.id), task.priority)
+
+    # Update status to QUEUED after pushing to Redis
+    task.status = TaskStatus.QUEUED
+    await session.commit()
+    await session.refresh(task)
+
+    logger.info(f"Task queued: {task.id} [{task.task_name}] priority={task.priority}")
+
     return task
 
-@router.get("/{task_id}", response_model = TaskResponse)
+@router.get("/", response_model = TaskResponse)
 async def list_tasks(
     status: Optional[TaskStatus] = Query(None, description="Filter tasks by status"),
     page: int = Query(1, ge=1),
@@ -76,13 +88,12 @@ async def list_tasks(
         page_size=page_size,
     )
 
-@router.get("/{task_id}", response_model = TaskResponse)
+@router.get("/", response_model = TaskResponse)
 async def get_task(
     task_id: str, 
     session: AsyncSession = Depends(get_session)
     ):
     """Get details of a specific task by ID."""
-    import uuid
     try:
         task_uuid = uuid.UUID(task_id)
     except ValueError:

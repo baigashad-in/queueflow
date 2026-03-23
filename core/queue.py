@@ -26,3 +26,11 @@ def _get_queue_key(priority: int) -> str:
         return QUEUE_MEDIUM
     else:
         return QUEUE_LOW
+    
+
+async def push_task(task_id: str, priority:int) -> None:
+    """Push a task ID onto the appropriate priority queue."""
+    queue_key = _get_queue_key(priority)
+    await redis_client.lpush(queue_key, task_id)
+    logger.info(f"Pushed task {task_id} to {queue_key} (priority {priority})")
+

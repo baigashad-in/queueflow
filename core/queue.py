@@ -46,3 +46,11 @@ async def pop_task() -> str | None:
             logger.info(f"Task{task_id} popped from {queue_key}")
             return task_id
     return None
+
+async def get_queue_depths() -> dict[str, int]:
+    """Return the current depth of each queue. Useful for monitoring."""
+    return{
+        "high": await redis_client.llen(QUEUE_HIGH),
+        "medium": await redis_client.llen(QUEUE_NORMAL),
+        "low": await redis_client.llen(QUEUE_LOW),
+        }

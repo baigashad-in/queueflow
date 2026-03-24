@@ -3,8 +3,10 @@ from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import Column, Integer, String, DateTime, Text, JSON
 from datetime import datetime, timezone
 import uuid
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Sequence
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from sqlalchemy import Sequence
+
 
 
 from core.config import settings
@@ -52,6 +54,10 @@ class TaskRecord(Base):
     updated_at = Column(DateTime(timezone=True), nullable = False, default= lambda: datetime.now(timezone.utc), onupdate = lambda: datetime.now(timezone.utc))
     started_at = Column(DateTime(timezone= True), nullable=True)
     completed_at = Column(DateTime(timezone= True), nullable = True)
+
+    # Auto-incrementing task number for easier human reference (not used for ordering)
+    task_number_seq = Sequence("task_number_seq")
+    task_number = Column(Integer, task_number_seq, server_default=task_number_seq.next_value(), unique=True, nullable=False)
 
     def __repr__(self):
         return f"<Task {self.id} [{self.task_name}] status = {self.status}>"

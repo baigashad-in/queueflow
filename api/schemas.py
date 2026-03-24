@@ -40,6 +40,7 @@ class TaskSubmitRequest(BaseModel):
 
 class TaskResponse(BaseModel):
     """What we return after a task is created."""
+    task_number: int
     id: UUID
     task_name: str
     payload: dict[str, Any]

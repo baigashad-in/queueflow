@@ -52,7 +52,7 @@ async def submit_task(
 
     return task
 
-@router.get("/", response_model = TaskResponse)
+@router.get("/", response_model = TaskListResponse)
 async def list_tasks(
     status: Optional[TaskStatus] = Query(None, description="Filter tasks by status"),
     page: int = Query(1, ge=1),
@@ -88,7 +88,7 @@ async def list_tasks(
         page_size=page_size,
     )
 
-@router.get("/", response_model = TaskResponse)
+@router.get("/{task_id}", response_model = TaskResponse)
 async def get_task(
     task_id: str, 
     session: AsyncSession = Depends(get_session)

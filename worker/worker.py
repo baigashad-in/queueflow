@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 async def process_task(task: TaskRecord, session) -> None:
     """Execute a single task and update its status in Postgres."""
 
-    logger.info(f"Processing task {task.id} [{task.task_type}] with payload: {task.payload}")
+    logger.info(f"Processing task {task.id} [{task.task_name}] with payload: {task.payload}")
 
     # Mark as RUNNING
     task.status = TaskStatus.RUNNING

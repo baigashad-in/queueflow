@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 # Task registry - maps task_name strings to handler functions
 TASK_REGISTRY: dict[str, Any] = {}
 
-def register_task(task_name: str):
+def register(task_name: str):
     """Decorator to register a function as a task handler."""
     def decorator(func):
         TASK_REGISTRY[task_name] = func
@@ -56,4 +56,5 @@ async def handle_generate_report(payload: dict) -> dict:
     """Simulate generating a report."""
     report_type = payload.get("report_type", "summary")
     logger.info(f"Generating report - Type: {report_type}")
-    await asyncio.sleep(1.5)  # Simulate heavy work    return {"report_type": report_type,"pages":4, "status": "generated"}
+    await asyncio.sleep(1.5)  # Simulate heavy work    
+    return {"report_type": report_type,"pages":4, "status": "generated"}

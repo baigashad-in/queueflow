@@ -25,7 +25,17 @@ async def dispatch(task_name: str, payload: dict) -> dict:
     
     if not handler:
         raise ValueError(f"No handler registered for task '{task_name}'")
-    logger.info(f"Dispatching task '{task_name}' with payload: {payload}")
+    logger.info(f"Dispatching task '{task_name}' with payload: {payload} to handler: {handler.__name__}")
     result = await handler(payload)
     return result or {}
+
+# --- Handlers -------------------------------
+@register("send_email")
+async def send_email_handler(payload: dict) -> dict:
+    """Simulate sending an email."""
+    to = payload.get("to", "unknown")
+    subject = payload.get("subject", "(No Subject)")
+    logger.info(f"Sending email to {to} - Subject: {subject}")
+    await asyncio.sleep(0.5)  # Simulate netwrok call
+    return {"sent_to": to, "subject": subject, "status": "delivered"}
 

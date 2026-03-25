@@ -25,11 +25,13 @@ async def dispatch(task_name: str, payload: dict) -> dict:
     
     if not handler:
         raise ValueError(f"No handler registered for task '{task_name}'")
+    
     logger.info(f"Dispatching task '{task_name}' with payload: {payload} to handler: {handler.__name__}")
     result = await handler(payload)
     return result or {}
 
 # --- Handlers -------------------------------
+
 @register("send_email")
 async def send_email_handler(payload: dict) -> dict:
     """Simulate sending an email."""
@@ -39,3 +41,19 @@ async def send_email_handler(payload: dict) -> dict:
     await asyncio.sleep(0.5)  # Simulate netwrok call
     return {"sent_to": to, "subject": subject, "status": "delivered"}
 
+@register("process_image")
+async def handle_process_image(payload: dict) -> dict:
+    """Simulate processing an image."""
+    image_url = payload.get("image_url", "unknown")
+    operation = payload.get("operation", "resize")
+    logger.info(f"Processing image from {image_url} - Operation: {operation}")
+    await asyncio.sleep(1)  # Simulate CPU work
+    return {"image_url": image_url, "operation": operation, "status": "processed"}
+
+
+@register("generate_report")
+async def handle_generate_report(payload: dict) -> dict:
+    """Simulate generating a report."""
+    report_type = payload.get("report_type", "summary")
+    logger.info(f"Generating report - Type: {report_type}")
+    await asyncio.sleep(1.5)  # Simulate heavy work    return {"report_type": report_type,"pages":4, "status": "generated"}

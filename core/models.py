@@ -17,3 +17,12 @@ class TaskPriority(int, Enum):
     HIGH = 10
     CRITICAL = 20
 
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str):
+            try:
+                return cls[value.upper()]
+            except KeyError:
+                return None
+        return None
+

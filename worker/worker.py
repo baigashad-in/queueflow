@@ -7,6 +7,7 @@ from core.database import get_session, TaskRecord
 from core.models import TaskStatus
 from sqlalchemy import select
 from datetime import datetime, timezone
+from worker.handlers import dispatch
 
 
 logging.basicConfig(
@@ -26,15 +27,15 @@ async def process_task(task: TaskRecord, session) -> None:
     await session.commit()
 
     try:
-        # Simulate work - Phase 4 will dispatch to real handlers
-        logger.info(f"Executing {task.task_name} with payload: {task.payload}")
-        await asyncio.sleep(1) # placeholder for real work
+        # Dispatch to real handler
+        result = await dispatch(task.task_name, task.payload)
         
-        # Mark as COMPLETED
+        # Store result and mark as COMPLETED
         task.status = TaskStatus.COMPLETED
         task.completed_at = datetime.now(timezone.utc)
+        task.max_results = result
         await session.commit()
-        logger.info(f"Task {task.id} completed successfully.")
+        logger.info(f"Task {task.id} completed successfully. Result: {result}")
     
     except Exception as e:
         logger.error(f"Task {task.id} failed: {e}")

@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     worker_concurrency: int = 3
 
+    # Grafana
+    grafana_admin_password: str = "admin"
+
     @property
     def redis_url(self) -> str:
         return f"redis://{self.redis_host}:{self.redis_port}"

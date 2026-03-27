@@ -52,12 +52,43 @@ services:
       - .env
     volumes:
       - .:/app
+    ports:
+      - "8001:8001" # Expose worker metrics port
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
 
+    
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/prometheus.yml:/etc/prometheus/prometheus.yml 
+      - prometheus_data:/prometheus
+    command:
+     - "--config.file=/etc/prometheus/prometheus.yml"
+     - "--storage.tsdb.path=/prometheus"
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+    depends_on:
+      - prometheus
+
 volumes:
   postgres_data:
   redis_data:
+  prometheus_data:
+  grafana_data:
+
+

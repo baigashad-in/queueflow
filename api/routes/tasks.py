@@ -11,6 +11,8 @@ from core.database import get_session, TaskRecord
 from core.models import TaskStatus
 from api.schemas import TaskSubmitRequest, TaskResponse, TaskListResponse
 from core.queue import push_task
+from core.metrics import tasks_submitted_total
+
 
 router = APIRouter(prefix = "/tasks", tags = ["Tasks"])
 logger = logging.getLogger(__name__)
@@ -38,7 +40,14 @@ async def submit_task(
     session.add(task)
     await session.commit()
     await session.refresh(task)
-    logger.info(f"Task submitted: {task.id} [{task.task_name}] priority={task.priority}")
+
+    # Record submission metric
+    tasks_submitted_total.labels(
+        task_name = task.task_name,
+        priority = str(task.priority),
+    ).inc()
+
+    # logger.info(f"Task submitted: {task.id} [{task.task_name}] priority={task.priority}")
 
     # Push into Redis priority queue
     await push_task(str(task.id), task.priority)

@@ -1,10 +1,13 @@
 from fastapi import FastAPI
+from fastapi.responses import Response
 from contextlib import asynccontextmanager
 import logging
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 from core.config import settings
 from core.database import init_db
 from api.routes.tasks import router as tasks_router
+import core.metrics
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -28,7 +31,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="PyQueue",
+    title="QueueFlow API",
     description="A distributed task queue system",
     version="0.1.0",
     lifespan=lifespan,
@@ -40,3 +43,11 @@ app.include_router(tasks_router)
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "pyqueue-api"}
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint."""
+    return Response(
+        content = generate_latest(),
+        media_type = CONTENT_TYPE_LATEST,
+    )

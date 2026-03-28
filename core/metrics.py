@@ -11,6 +11,12 @@ tasks_submitted_total = Counter(
     ["task_name", "priority"],
 )
 
+tasks_retried_total = Counter(
+    "queueflow_tasks_retried_total",
+    "Total number of tasks that were retried",
+    ["task_name", "priority"],
+)
+
 tasks_completed_total = Counter(
     "queueflow_tasks_completed_total",
     "Total number of tasks completed successfully",
@@ -18,13 +24,13 @@ tasks_completed_total = Counter(
 )
 
 tasks_failed_total = Counter(
-    "queueflow_task_failed_total",
+    "queueflow_tasks_failed_total",
     "Total number of tasks that failed",
     ["task_name", "priority"],
 )
 
 tasks_dead_total = Counter(
-    "queueflow_task_dead_total",
+    "queueflow_tasks_dead_total",
     "Total number of tasks marked as dead (exhausted retries)",
     ["task_name", "priority"],
 )
@@ -46,3 +52,9 @@ queue_depth = Gauge(
     "Current number of tasks waiting in each queue",
     ["queue"]
 )
+
+dlq_depth = Gauge(
+    "queueflow_dlq_depth",
+    "Current number of tasks waiting in the Dead Letter Queue",
+)
+

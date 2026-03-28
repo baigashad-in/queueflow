@@ -13,11 +13,12 @@ from core.metrics import (
     tasks_dead_total,
     task_processing_seconds,
     queue_depth,
+    dlq_depth,
 )
 from sqlalchemy import select
 from datetime import datetime, timezone
 from prometheus_client import start_http_server
-
+from core.dlq import push_to_dlq, get_dlq_depth
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -80,6 +81,7 @@ async def process_task(task: TaskRecord, session) -> None:
                 task_name = task.task_name,
                 priority = task.priority,
             ).inc()
+            await push_to_dlq(str(task.id))
             logger.error(f"Task {task.id} exhausted retries and is now marked as DEAD.")
         await session.commit()
 
@@ -103,6 +105,8 @@ async def poll_loop():
                 queue_depth.labels(queue = "high").set(depths["high"])
                 queue_depth.labels(queue = "medium").set(depths["medium"])
                 queue_depth.labels(queue = "low").set(depths["low"])
+                current_dlq_depth = await get_dlq_depth()
+                dlq_depth.set(current_dlq_depth)
                 logger.info(f"No tasks found. Queue depths: {depths}")
                 await asyncio.sleep(5)
                 continue
@@ -116,6 +120,10 @@ async def poll_loop():
 
                 if not task:
                     logger.warning(f"Task {task_id} not found in Postgres - skipping.")
+                    continue
+
+                if task.status == TaskStatus.FAILED and task.error_message == "Cancelled by user":
+                    logger.info(f"Task {task_id} was cancelled by user - skipping.")
                     continue
 
                 await process_task(task, session)

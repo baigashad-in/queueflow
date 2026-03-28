@@ -7,7 +7,9 @@ from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from core.config import settings
 from core.database import init_db
 from api.routes.tasks import router as tasks_router
+from api.routes.lifecycle import router as lifecycle_router
 import core.metrics
+
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -38,6 +40,7 @@ app = FastAPI(
 )
 
 app.include_router(tasks_router)
+app.include_router(lifecycle_router)
 
 
 @app.get("/health")

@@ -19,6 +19,7 @@ from sqlalchemy import select
 from datetime import datetime, timezone
 from prometheus_client import start_http_server
 from core.dlq import push_to_dlq, get_dlq_depth
+from worker.scheduler_loop import scheduler_loop
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -134,6 +135,9 @@ async def poll_loop():
 
 
 if __name__ == "__main__":
-    asyncio.run(poll_loop())
+    async def main():
+        """Run both the poll loop and scheduler loop concurrently."""
+        await asyncio.gather(poll_loop(), scheduler_loop())
+    asyncio.run(main())
 
     

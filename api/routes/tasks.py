@@ -5,14 +5,13 @@ import logging
 from typing import Optional
 import uuid
 
-
-
 from core.database import get_session, TaskRecord
 from core.models import TaskStatus
 from api.schemas import TaskSubmitRequest, TaskResponse, TaskListResponse
 from core.queue import push_task
 from core.metrics import tasks_submitted_total
-
+import time
+from core.scheduler import schedule_task
 
 router = APIRouter(prefix = "/tasks", tags = ["Tasks"])
 logger = logging.getLogger(__name__)
@@ -47,18 +46,20 @@ async def submit_task(
         priority = str(task.priority),
     ).inc()
 
-    # logger.info(f"Task submitted: {task.id} [{task.task_name}] priority={task.priority}")
+    if request.delay_seconds is not None:
+        run_at = time.time() + request.delay_seconds
+        await schedule_task(str(task.id), run_at)
+        logger.info(f"Task scheduled with delay: {task.id} to run at {request.delay_seconds} seconds from now")
+        task.status = TaskStatus.PENDING
+    else:
+        # Push into Redis priority queue
+        # Update status to QUEUED after pushing to Redis
+        await push_task(str(task.id), task.priority)
+        task.status = TaskStatus.QUEUED
+        logger.info(f"Task queued: {task.id} [{task.task_name}] priority={task.priority}")
 
-    # Push into Redis priority queue
-    await push_task(str(task.id), task.priority)
-
-    # Update status to QUEUED after pushing to Redis
-    task.status = TaskStatus.QUEUED
     await session.commit()
     await session.refresh(task)
-
-    logger.info(f"Task queued: {task.id} [{task.task_name}] priority={task.priority}")
-
     return task
 
 @router.get("/", response_model = TaskListResponse)

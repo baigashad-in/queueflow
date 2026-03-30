@@ -30,6 +30,19 @@ class TaskSubmitRequest(BaseModel):
         description = "Maximum retry attempts on failure"
     )
 
+    delay_seconds: Optional[int] = Field(
+        default = None,
+        ge = 0,
+        description = "Delay in seconds before the task is executed/run"
+    )
+
+    cron_expression : Optional[str] = Field(
+        default = None,
+        description = "Cron expression for recurring tasks at scheduled time. Overrides delay_seconds if both are provided."
+    )
+
+
+
     @field_validator("task_name")
     @classmethod
     def task_name_no_spaces(cls, v: str) -> str:

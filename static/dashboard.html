@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QueueFlow Dashboard</title>
+    <style>
+        body{
+            font-family: sans-serif;
+            margin: 40px;
+            background: #1a1a2e;
+            color: #eee;
+        }
+        h1{
+            color: #e94560;
+        }
+        table{
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td{
+            padding: 10px;
+            border: 1px solid #333;
+            text-align: left;
+        }
+        th{
+            background: #16213e;
+            color: #e94560;
+        }
+        .status-running { color: #f5a623;}
+        .status-completed { color: #7ed321;}
+        .status-failed, .status-dead { color: #e94560;}
+        .status-queued { color: #4a90d9;}
+        .status-pending{ color: #888;}
+        #connection-status {
+            margin-top: 20px;
+            font-weight: bold;
+        }
+        .connected { color: #7ed321;}
+        .disconnected { color: #e94560;}
+    </style>
+</head>
+<body>
+    <h1>QueueFlow Live Dashboard</h1>
+    <div id="connection-status" class="disconnected">Disconnected</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Task ID</th>
+                <th>Name</th>
+                <th>Status</th>
+                <th>Priority</th>
+                <th>Last Updated</th>
+            </tr>
+        </thead>
+        <tbody id="task-table">
+            <!-- Task rows will be dynamically inserted here -->
+        </tbody>
+
+        <script>
+            function connect(){
+                const ws = new WebSocket("ws://localhost:8000/ws/tasks");
+                const statusEl = document.getElementById("connection-status");
+                const tableBody = document.getElementById("task-table");
+                ws.onopen = () => {
+                    statusEl.textContent = "Connected";
+                    statusEl.className = "connected";
+                };
+
+                ws.onclose = function() {
+                    statusEl.textContent = "Disconnected - reconnecting...";
+                    statusEl.className = "disconnected";
+                    setTimeout(connect, 3000); // Try to reconnect every 3 seconds
+                };
+
+                ws.onmessage = function(event) {
+                    const data = JSON.parse(event.data);
+                    
+                // Check if a row for this task already exists
+                let row = document.getElementById(data.task_id);
+                if (!row) {
+                    // Create a new row
+                    row = document.createElement("tr");
+                    row.id = data.task_id;
+                    tableBody.insertBefore(row, tableBody.firstChild); // newest at top
+                }
+
+                // Update the row content
+                row.innerHTML = `
+                    <td>${data.task_id}</td>
+                    <td>${data.task_name}</td>
+                    <td class="status-${data.status}">${data.status.toUpperCase()}</td>
+                    <td>${data.priority}</td>
+                    <td>${new Date(data.timestamp).toLocaleTimeString()}</td>
+                `;
+            }
+        }
+
+        // Start the WebSocket connection
+        connect();
+        
+        </script>
+
+    </table>
+</body>
+</html>

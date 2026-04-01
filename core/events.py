@@ -18,3 +18,4 @@ async def publish(event: dict) -> None:
     """Publish an event to all subscribers."""
     for queue in subscribers:
         await queue.put(event)
+        

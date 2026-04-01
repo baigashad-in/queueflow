@@ -1,11 +1,12 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy import Column, Integer, String, DateTime, Text, JSON
+from sqlalchemy import Column, Integer, String, DateTime, Text, JSON, Boolean, ForeignKey
 from datetime import datetime, timezone
 import uuid
 from typing import AsyncGenerator, Sequence
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy import Sequence
+import secrets
 
 
 
@@ -26,6 +27,32 @@ AsyncSessionLocal = async_sessionmaker(engine,
 class Base(DeclarativeBase):
     pass
 
+class Tenant(Base):
+    """Represents a customer/organization in a multi-tenant setup."""
+    __tablename__ = "tenants"
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), unique=True, nullable=False)
+    is_active = Column(Boolean, default = True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default = lambda: datetime.now(timezone.utc))
+
+    def __repr__(self):
+        return f"<Tenant {self.name} [{'active' if self.is_active else 'inactive'}]>"
+
+
+class ApiKey(Base):
+    """Represents an API key for authentication."""
+    __tablename__ = "api_keys"
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
+    key = Column(String(255), unique=True, nullable=False, default=lambda: secrets.token_urlsafe(32))
+    label = Column(String(255), nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default = lambda: datetime.now(timezone.utc))
+
+    def __repr__(self):
+        return f"<ApiKey {self.label} tenant = {self.tenant_id}>"
+    
+    
 class TaskRecord(Base):
     """Permanent record of a task execution, stored in the database."""
     __tablename__ = "task_records"
@@ -59,6 +86,9 @@ class TaskRecord(Base):
     task_number_seq = Sequence("task_number_seq")
     task_number = Column(Integer, task_number_seq, server_default=task_number_seq.next_value(), unique=True, nullable=False)
 
+    # Foreign key to Tenant for multi-tenancy support (optional)
+    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True, index=True)
+
     def __repr__(self):
         return f"<Task {self.id} [{self.task_name}] status = {self.status}>"
     
@@ -73,6 +103,10 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """Dependency for FastAPI route injection."""
     async with AsyncSessionLocal() as session:
         yield session
+
+
+
+
 
 
 

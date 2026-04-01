@@ -57,51 +57,73 @@
         <tbody id="task-table">
             <!-- Task rows will be dynamically inserted here -->
         </tbody>
-
-        <script>
-            function connect(){
-                const ws = new WebSocket("ws://localhost:8000/ws/tasks");
-                const statusEl = document.getElementById("connection-status");
-                const tableBody = document.getElementById("task-table");
-                ws.onopen = () => {
-                    statusEl.textContent = "Connected";
-                    statusEl.className = "connected";
-                };
-
-                ws.onclose = function() {
-                    statusEl.textContent = "Disconnected - reconnecting...";
-                    statusEl.className = "disconnected";
-                    setTimeout(connect, 3000); // Try to reconnect every 3 seconds
-                };
-
-                ws.onmessage = function(event) {
-                    const data = JSON.parse(event.data);
-                    
-                // Check if a row for this task already exists
-                let row = document.getElementById(data.task_id);
-                if (!row) {
-                    // Create a new row
-                    row = document.createElement("tr");
-                    row.id = data.task_id;
-                    tableBody.insertBefore(row, tableBody.firstChild); // newest at top
-                }
-
-                // Update the row content
-                row.innerHTML = `
-                    <td>${data.task_id}</td>
-                    <td>${data.task_name}</td>
-                    <td class="status-${data.status}">${data.status.toUpperCase()}</td>
-                    <td>${data.priority}</td>
-                    <td>${new Date(data.timestamp).toLocaleTimeString()}</td>
-                `;
-            }
-        }
-
-        // Start the WebSocket connection
-        connect();
-        
-        </script>
-
     </table>
+
+    <script>
+        function connect(){
+            const ws = new WebSocket("ws://localhost:8000/ws/tasks");
+            const statusEl = document.getElementById("connection-status");
+            const tableBody = document.getElementById("task-table");
+            ws.onopen = () => {
+                statusEl.textContent = "Connected";
+                statusEl.className = "connected";
+
+                // Load existing tasks via REST API
+                fetch("/tasks/?page_size=50")
+                    .then(response => response.json())
+                    .then(data => {
+                        data.tasks.forEach(task => {
+                            let row = document.getElementById(task.id);
+                            if (!row){
+                                row = document.createElement("tr");
+                                row.id = task.id;
+                                tableBody.appendChild(row);
+                            }
+                            row.innerHTML =
+                                `<td>${task.id.substring(0, 8)}</td>
+                                <td>${task.task_name}</td>
+                                <td class="status-${task.status}">${task.status.toUpperCase()}</td>
+                                <td>${task.priority}</td>
+                                <td>${new Date(task.timestamp).toLocaleTimeString()}</td>`;
+                        });
+                    });
+
+            };
+
+            ws.onclose = function() {
+                statusEl.textContent = "Disconnected - reconnecting...";
+                statusEl.className = "disconnected";
+                setTimeout(connect, 3000); // Try to reconnect every 3 seconds
+            };
+
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                
+            // Check if a row for this task already exists
+            let row = document.getElementById(data.task_id);
+            if (!row) {
+                // Create a new row
+                row = document.createElement("tr");
+                row.id = data.task_id;
+                tableBody.insertBefore(row, tableBody.firstChild); // newest at top
+            }
+
+            // Update the row content
+            row.innerHTML = `
+                <td>${data.task_id.substring(0, 8)}</td>
+                <td>${data.task_name}</td>
+                <td class="status-${data.status}">${data.status.toUpperCase()}</td>
+                <td>${data.priority}</td>
+                <td>${new Date(data.timestamp).toLocaleTimeString()}</td>
+            `;
+        }
+    }
+
+    // Start the WebSocket connection
+    connect();
+
+    </script>
+
+    
 </body>
 </html>

@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field, field_validator
 from typing import Any, Optional
 from datetime import datetime
 from uuid import UUID
+# import uuid
 
 from core.models import TaskPriority, TaskStatus
 
@@ -77,3 +78,27 @@ class TaskListResponse(BaseModel):
     total: int
     page: int
     page_size:int
+
+
+class TenantCreateRequest(BaseModel):
+    name: str = Field(..., min_length = 1, max_length = 255)
+
+class TenantResponse(BaseModel):
+    id: UUID
+    name: str
+    is_active: bool
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+
+class ApiKeyCreateRequest(BaseModel):
+    label: str = Field(default = None, max_length = 255)
+
+class ApiKeyResponse(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    key: str
+    label: str | None
+    is_active: bool
+    created_at: datetime
+    model_config = {"from_attributes": True}

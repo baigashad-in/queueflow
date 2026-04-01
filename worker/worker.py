@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from prometheus_client import start_http_server
 from core.dlq import push_to_dlq, get_dlq_depth
 from worker.scheduler_loop import scheduler_loop
+from core.events import publish
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -36,6 +37,14 @@ async def process_task(task: TaskRecord, session) -> None:
     task.status = TaskStatus.RUNNING
     task.started_at = datetime.now(timezone.utc)
     await session.commit()
+
+    await publish({
+        "task_id": str(task.id),
+        "task_name": task.task_name,
+        "status": task.status.value if hasattr(task.status, "value") else task.status,
+        "priority": task.priority,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
 
     start_time = time.monotonic()
 
@@ -60,6 +69,13 @@ async def process_task(task: TaskRecord, session) -> None:
         task.completed_at = datetime.now(timezone.utc)
         task.max_results = result
         await session.commit()
+        await publish({
+            "task_id": str(task.id),
+            "task_name": task.task_name,
+            "status": task.status.value if hasattr(task.status, "value") else task.status,
+            "priority": task.priority,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
         logger.info(f"Task {task.id} completed in {duration: .2f}s. Result: {result}")
     
     except Exception as e:
@@ -85,6 +101,13 @@ async def process_task(task: TaskRecord, session) -> None:
             await push_to_dlq(str(task.id))
             logger.error(f"Task {task.id} exhausted retries and is now marked as DEAD.")
         await session.commit()
+        await publish({
+            "task_id": str(task.id),
+            "task_name": task.task_name,
+            "status": task.status.value if hasattr(task.status, "value") else task.status,
+            "priority": task.priority,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
 
 
 async def poll_loop():

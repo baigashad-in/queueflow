@@ -9,6 +9,10 @@ from core.database import init_db
 from api.routes.tasks import router as tasks_router
 from api.routes.lifecycle import router as lifecycle_router
 import core.metrics
+from fastapi.staticfiles import StaticFiles
+from api.routes.ws import router as ws_router
+from api.routes.tenants import router as tenants_router
+from api.auth import get_current_tenant
 
 
 logging.basicConfig(
@@ -16,7 +20,6 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -31,7 +34,6 @@ async def lifespan(app: FastAPI):
 
     logger.info("PyQueue API shutting down...")
 
-
 app = FastAPI(
     title="QueueFlow API",
     description="A distributed task queue system",
@@ -41,6 +43,11 @@ app = FastAPI(
 
 app.include_router(tasks_router)
 app.include_router(lifecycle_router)
+app.include_router(ws_router)
+app.include_router(tenants_router)
+
+# After the app is created, we can mount the static directory
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 @app.get("/health")

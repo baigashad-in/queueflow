@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -12,6 +14,10 @@ from core.queue import push_task
 from core.metrics import tasks_submitted_total
 import time
 from core.scheduler import schedule_task
+from core.events import publish
+from core.database import Tenant
+from api.auth import get_current_tenant
+
 
 router = APIRouter(prefix = "/tasks", tags = ["Tasks"])
 logger = logging.getLogger(__name__)
@@ -19,6 +25,7 @@ logger = logging.getLogger(__name__)
 @router.post("/", response_model = TaskResponse, status_code = 201)
 async def submit_task(
     request: TaskSubmitRequest,
+    tenant: Tenant = Depends(get_current_tenant),
     session: AsyncSession = Depends(get_session),
 ):
     """
@@ -34,6 +41,7 @@ async def submit_task(
         priority = request.priority.value,
         max_retries = request.max_retries,
         status = TaskStatus.PENDING,
+        tenant_id = tenant.id,
     )
 
     session.add(task)
@@ -59,6 +67,14 @@ async def submit_task(
         logger.info(f"Task queued: {task.id} [{task.task_name}] priority={task.priority}")
 
     await session.commit()
+
+    await publish({
+    "task_id": str(task.id),
+    "task_name": task.task_name,
+    "status": task.status.value if hasattr(task.status, "value") else task.status,
+    "priority": task.priority,
+    "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
     await session.refresh(task)
     return task
 
@@ -68,12 +84,13 @@ async def list_tasks(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     session: AsyncSession = Depends(get_session),
+    tenant: Tenant = Depends(get_current_tenant),
 ):
     """List all tasks with optional status filter and pagination."""
 
     # Base query
-    query = select(TaskRecord).order_by(TaskRecord.created_at.desc())
-    count_query = select(func.count(TaskRecord.id))
+    query = select(TaskRecord).where(TaskRecord.tenant_id == tenant.id).order_by(TaskRecord.created_at.desc())
+    count_query = select(func.count(TaskRecord.id)).where(TaskRecord.tenant_id == tenant.id)
 
     # Apply filter
     if status:
@@ -101,7 +118,8 @@ async def list_tasks(
 @router.get("/{task_id}", response_model = TaskResponse)
 async def get_task(
     task_id: str, 
-    session: AsyncSession = Depends(get_session)
+    session: AsyncSession = Depends(get_session),
+    tenant: Tenant = Depends(get_current_tenant),
     ):
     """Get details of a specific task by ID."""
     try:
@@ -114,5 +132,7 @@ async def get_task(
     task = result.scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    if task.tenant_id != tenant.id:
+            raise HTTPException(status_code = 404, detail = "Task not found")
     
     return task

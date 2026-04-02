@@ -1,21 +1,26 @@
-import asyncio
-from typing import Any
+import json
+import logging
 
-# Each subscriber gets a queue
-subscribers: list[asyncio.Queue] = []
+from core.queue import redis_client
 
-def subscribe() -> asyncio.Queue:
-    """Subscribe to events. Returns an asyncio.Queue that will receive events."""
-    queue = asyncio.Queue()
-    subscribers.append(queue)
-    return queue
+logger = logging.getLogger(__name__)
 
-def unsubscribe(queue: asyncio.Queue) -> None:
-    """Unsubscribe from events. Removes the given queue from the list of subscribers."""
-    subscribers.remove(queue)
+CHANNEL = "queueflow:events"
 
+# Redis Pub/Sub implementation (for multi-worker setups)
 async def publish(event: dict) -> None:
-    """Publish an event to all subscribers."""
-    for queue in subscribers:
-        await queue.put(event)
+    """Publish an event to Redis Pub/Sub."""
+    await redis_client.publish(CHANNEL, json.dumps(event))
+
+async def subscribe_to_events():
+    """Async generator that yields events from Redis Pub/Sub."""
+    pubsub = redis_client.pubsub()
+    await pubsub.subscribe(CHANNEL)
+    try:
+        async for message in pubsub.listen():
+            if message["type"] == "message":
+                yield json.loads(message["data"])
+    finally:
+        await pubsub.unsubscribe(CHANNEL)
+
         

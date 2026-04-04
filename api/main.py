@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from api.routes.ws import router as ws_router
 from api.routes.tenants import router as tenants_router
 from api.auth import get_current_tenant
+from api.middleware import RequestIDMiddleware, RateLimitMiddleware
 
 
 logging.basicConfig(
@@ -45,6 +46,9 @@ app.include_router(tasks_router)
 app.include_router(lifecycle_router)
 app.include_router(ws_router)
 app.include_router(tenants_router)
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(RequestIDMiddleware)
+
 
 # After the app is created, we can mount the static directory
 app.mount("/static", StaticFiles(directory="static"), name="static")

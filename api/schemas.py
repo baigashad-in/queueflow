@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field, field_validator
 from typing import Any, Optional
 from datetime import datetime
 from uuid import UUID
-# import uuid
+import re 
 
 from core.models import TaskPriority, TaskStatus
 
@@ -47,8 +47,8 @@ class TaskSubmitRequest(BaseModel):
     @field_validator("task_name")
     @classmethod
     def task_name_no_spaces(cls, v: str) -> str:
-        if " " in v:
-            raise ValueError("task_name cannot contain spaces. Use underscores: like 'send_email'")
+        if not re.match(r'^[a-zA-Z0-9_]+$', v):
+            raise ValueError("task_name cannot contain spaces or hyphens. Use underscores: like 'send_email'")
         return v.lower()
     
 

@@ -26,8 +26,8 @@ async def client(test_session, test_tenant):
     async with AsyncClient(
         transport = transport, 
         base_url = "http://test",
-        headers={"X-API-Key": test_tenant["api_key"].key}
-        ) as client:
+        headers={"X-API-Key": test_tenant["api_key"].key},
+    ) as client:
         yield client
 
     app.dependency_overrides.clear()

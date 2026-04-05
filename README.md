@@ -76,7 +76,7 @@ No local Python installation required — everything runs inside Docker.
 
 1. Clone the repository
 
-git clone https://github.com/yourusername/queueflow.git
+git clone https://github.com/baigashad-in/queueflow.git
 cd queueflow
 
 2. Copy the example environment file

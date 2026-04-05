@@ -35,14 +35,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Check for API key in headers and enforce rate limiting        
         api_key = request.headers.get("X-API-Key")
         if api_key:
-            result = await check_rate_limit(api_key)
-            if not result["allowed"]:
-                return JSONResponse(
-                        status_code = 429,
-                        content = {
-                            "detail": "Rate limit exceeded", "reset_in": result["reset_in"]
-                        },
-                    )
+            try:
+                result = await check_rate_limit(api_key)
+                if not result["allowed"]:
+                    return JSONResponse(
+                            status_code = 429,
+                            content = {
+                                "detail": "Rate limit exceeded", "reset_in": result["reset_in"]
+                            },
+                        )
+            except Exception:
+                pass # Skip rate limiting if Redis is unavailable
             
         response = await call_next(request)
         return response

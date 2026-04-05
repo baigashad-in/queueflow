@@ -7,7 +7,8 @@ import random
 
 from core.config import settings
 from core.queue import pop_task, get_queue_depths
-from core.database import get_session, TaskRecord
+from core.database import get_session
+from core.db_models import TaskRecord
 from core.models import TaskStatus
 from core.events import publish
 from core.dlq import push_to_dlq, get_dlq_depth
@@ -27,7 +28,7 @@ from prometheus_client import start_http_server
 from worker.scheduler_loop import scheduler_loop
 from worker.heartbeat import heartbeat_loop
 from worker.handlers import dispatch
-
+from core.constants import CANCELLATION_MESSAGE
 
 
 logging.basicConfig(
@@ -137,8 +138,8 @@ async def process_with_limit(semaphore, task_id):
                 if not task:
                     logger.warning(f"Task{task_id} not found - skipping")
                     return
-                if task.status == TaskStatus.FAILED and task.error_message == "Cancelled by user":
-                    logger.info(f"Task {task_id} was cancelled by user - skipping.")
+                if task.status == TaskStatus.FAILED and task.error_message == CANCELLATION_MESSAGE:
+                    logger.info(f"Task {task_id} was {CANCELLATION_MESSAGE} - skipping.")
                     return
                 # await — blocks here until process_task finishes
                 await process_task(task, session) 

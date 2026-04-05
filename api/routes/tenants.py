@@ -4,7 +4,8 @@ from sqlalchemy import select
 import uuid
 import logging
 
-from core.database import get_session, Tenant, ApiKey
+from core.database import get_session
+from core.db_models import Tenant, ApiKey
 from api.schemas import TenantCreateRequest, TenantResponse, ApiKeyCreateRequest, ApiKeyResponse
 
 router = APIRouter(prefix = "/tenants", tags = ["Tenants"])

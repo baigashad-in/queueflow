@@ -1,10 +1,10 @@
 import asyncio
 import logging
-import time
 
 from core.scheduler import get_due_tasks, remove_scheduled
 from core.queue import push_task
-from core.database import get_session, TaskRecord
+from core.database import get_session
+from core.db_models import TaskRecord
 from core.models import TaskStatus
 from sqlalchemy import select
 

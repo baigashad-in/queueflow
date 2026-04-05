@@ -5,13 +5,15 @@ import uuid
 import logging
 from datetime import datetime, timezone
 
-from core.database import get_session, TaskRecord
+from core.database import get_session
+from core.db_models import TaskRecord
 from core.models import TaskStatus
 from core.dlq import get_dlq_contents, get_dlq_depth, remove_from_dlq, purge_dlq, pop_from_dlq
 from core.queue import push_task
 from core.metrics import tasks_retried_total
 from api.schemas import TaskResponse
 from core.events import publish
+from core.constants import CANCELLATION_MESSAGE
 
 
 router = APIRouter(tags=["Lifecycle"])
@@ -47,8 +49,8 @@ async def cancel_task(task_id: str, session: AsyncSession = Depends(get_session)
     # if we get here, the task is either PENDING or QUEUED and can be cancelled
     task.status = TaskStatus.FAILED
     task.completed_at = datetime.now(timezone.utc)
-    logger.info(f"Task {task.id} cancelled by user.")
-    task.error_message = "Cancelled by user."
+    logger.info(f"Task {task.id} {CANCELLATION_MESSAGE}")
+    task.error_message = CANCELLATION_MESSAGE
     await session.commit()
     await publish({
         "task_id": str(task.id),

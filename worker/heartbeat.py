@@ -1,12 +1,14 @@
-from core.queue import redis_client
 import logging
 import time
 import asyncio
 import uuid
 
+from core.queue import redis_client
+from core.constants import HEARTBEAT_PREFIX
+
 logger = logging.getLogger(__name__)
 
-HEARTBEAT_PREFIX = "queueflow:worker:"
+# HEARTBEAT_PREFIX = "queueflow:worker:"
 
 worker_id = str(uuid.uuid4())[:8]  # Short unique ID for this worker instance
 

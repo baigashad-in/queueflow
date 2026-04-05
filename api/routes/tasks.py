@@ -1,22 +1,25 @@
+import time
+import uuid
+import logging
+
+from typing import Optional
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-import logging
-from typing import Optional
-import uuid
 
-from core.database import get_session, TaskRecord
+from core.database import get_session 
 from core.models import TaskStatus
-from api.schemas import TaskSubmitRequest, TaskResponse, TaskListResponse
 from core.queue import push_task
 from core.metrics import tasks_submitted_total
-import time
 from core.scheduler import schedule_task
 from core.events import publish
-from core.database import Tenant
+from core.db_models import Tenant, TaskRecord
+
 from api.auth import get_current_tenant
+from api.schemas import TaskSubmitRequest, TaskResponse, TaskListResponse
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 
 router = APIRouter(prefix = "/tasks", tags = ["Tasks"])

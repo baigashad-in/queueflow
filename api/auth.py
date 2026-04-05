@@ -1,7 +1,8 @@
 from fastapi import Depends, HTTPException, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from core.database import get_session, Tenant, ApiKey
+from core.database import get_session
+from core.db_models import Tenant, ApiKey
 
 async def get_current_tenant(
         api_key: str = Header(..., alias = "X-API-Key"),

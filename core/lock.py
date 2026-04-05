@@ -1,10 +1,11 @@
-from core.queue import redis_client
 import logging
 
+from core.queue import redis_client
+from core.constants import LOCK_PREFIX
 
 logger = logging.getLogger(__name__)
 
-LOCK_PREFIX = "queueflow:lock:"
+# LOCK_PREFIX = "queueflow:lock:"
 
 async def acquire_lock(task_id: str, timeout: int =30) -> bool:
     """Try to acquire a lock for a task. Returns True if acquired."""

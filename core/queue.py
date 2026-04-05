@@ -3,6 +3,7 @@ import json
 import logging
 
 from core.config import settings
+from core.constants import QUEUE_HIGH, QUEUE_NORMAL, QUEUE_LOW
 
 logger = logging.getLogger(__name__)
 
@@ -14,9 +15,9 @@ redis_client = aioredis.from_url(
 )
 
 # Queue key constants
-QUEUE_HIGH = "queueflow:queue:high"      # priority >=8
-QUEUE_NORMAL = "queueflow:queue:medium"  # priority >=4 and <=7
-QUEUE_LOW = "queueflow:queue:low"        # priority <=3
+# QUEUE_HIGH = "queueflow:queue:high"      # priority >=8
+# QUEUE_NORMAL = "queueflow:queue:medium"  # priority >=4 and <=7
+# QUEUE_LOW = "queueflow:queue:low"        # priority <=3
 
 def _get_queue_key(priority: int) -> str:
     """Map a numeric priority to the correct Redis list key."""

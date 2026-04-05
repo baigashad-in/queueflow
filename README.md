@@ -3,7 +3,7 @@
 A distributed task queue and job orchestration platform built from scratch with Python, FastAPI, Redis, and PostgreSQL
 
 ## Architecture
-
+```
 ┌──────────────────────────────────────────────────────────────┐
 │                     Client / API Layer                       │
 │           FastAPI — REST + WebSocket + Auth                  │
@@ -34,7 +34,7 @@ A distributed task queue and job orchestration platform built from scratch with 
    │           Observability                      │
    │  Prometheus metrics + Grafana dashboard      │
    └──────────────────────────────────────────────┘
-
+```
 
 ## Features
 

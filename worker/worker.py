@@ -3,12 +3,16 @@ import asyncio
 import time
 import signal
 import uuid
+import random
 
 from core.config import settings
 from core.queue import pop_task, get_queue_depths
 from core.database import get_session, TaskRecord
 from core.models import TaskStatus
-from worker.handlers import dispatch
+from core.events import publish
+from core.dlq import push_to_dlq, get_dlq_depth
+from core.scheduler import schedule_task
+from core.lock import acquire_lock, release_lock
 from core.metrics import (
     tasks_completed_total,
     tasks_failed_total,
@@ -20,10 +24,10 @@ from core.metrics import (
 from sqlalchemy import select
 from datetime import datetime, timezone
 from prometheus_client import start_http_server
-from core.dlq import push_to_dlq, get_dlq_depth
 from worker.scheduler_loop import scheduler_loop
-from core.events import publish
 from worker.heartbeat import heartbeat_loop
+from worker.handlers import dispatch
+
 
 
 logging.basicConfig(
@@ -89,12 +93,15 @@ async def process_task(task: TaskRecord, session) -> None:
         task.retry_count += 1
 
         if task.retry_count <= task.max_retries:
-            task.status = TaskStatus.PENDING
+            delay = (2 ** task.retry_count) + random.uniform(0, 1)  # Exponential backoff with jitter
+            run_at = time.time() + delay
+            await schedule_task(str(task.id), run_at)
+            task.status = TaskStatus.RETRYING
             tasks_failed_total.labels(
                 task_name = task.task_name,
                 priority = task.priority,
             ).inc()
-            logger.info(f"Retrying task {task.id} (attempt {task.retry_count}/{task.max_retries})")
+            logger.info(f"Retrying task {task.id} in {delay:.1f}s (attempt {task.retry_count}/{task.max_retries})")
         else:
             task.status = TaskStatus.DEAD
             task.error_message = str(e)
@@ -115,23 +122,28 @@ async def process_task(task: TaskRecord, session) -> None:
 
 
 async def process_with_limit(semaphore, task_id):
-    """Fetch ans process a task, limited by semaphore."""
+    """Process a task with concurrency limit and distributed locking to prevent multiple workers from processing the same task."""
     async with semaphore:
-        # Fetch task from DB and process it
-        async for session in get_session():
-            result = await session.execute(
-                select(TaskRecord).where(TaskRecord.id == task_id)
-            )
-            task = result.scalar_one_or_none()
-            if not task:
-                logger.warning(f"Task{task_id} not found - skipping")
-                return
-            if task.status == TaskStatus.FAILED and task.error_message == "Cancelled by user":
-                logger.info(f"Task {task_id} was cancelled by user - skipping.")
-                return
-            # await — blocks here until process_task finishes
-            await process_task(task, session) 
-
+        if not await acquire_lock(task_id):
+            return # Another worker is processing this task - skip it
+        
+        try:
+            # If the task is not processed by another worker, we fetch it from the database and process it as usual. We also check if the task was cancelled by user while we were waiting for the lock - if so, we skip processing.
+            async for session in get_session():
+                result = await session.execute(
+                    select(TaskRecord).where(TaskRecord.id == task_id)
+                )
+                task = result.scalar_one_or_none()
+                if not task:
+                    logger.warning(f"Task{task_id} not found - skipping")
+                    return
+                if task.status == TaskStatus.FAILED and task.error_message == "Cancelled by user":
+                    logger.info(f"Task {task_id} was cancelled by user - skipping.")
+                    return
+                # await — blocks here until process_task finishes
+                await process_task(task, session) 
+        finally:
+            await release_lock(task_id)
         
 
 async def poll_loop():

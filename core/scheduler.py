@@ -5,7 +5,7 @@ from core.queue import redis_client
 from core.constants import SCHEDULED_KEY
 
 logger = logging.getLogger(__name__)
-# REDIS_KEY = "queueflow:scheduled"
+
 
 async def schedule_task(task_id: str, run_at_timestamp: float) -> None:
     """ Adds a task to the sorted set with the timestamp as the score. """

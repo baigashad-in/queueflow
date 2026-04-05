@@ -12,7 +12,7 @@ from core.dlq import get_dlq_contents, get_dlq_depth, remove_from_dlq, purge_dlq
 from core.queue import push_task
 from core.metrics import tasks_retried_total
 from api.schemas import TaskResponse
-from core.events import publish
+from core.events import publish_task_event
 from core.constants import CANCELLATION_MESSAGE
 
 
@@ -52,13 +52,7 @@ async def cancel_task(task_id: str, session: AsyncSession = Depends(get_session)
     logger.info(f"Task {task.id} {CANCELLATION_MESSAGE}")
     task.error_message = CANCELLATION_MESSAGE
     await session.commit()
-    await publish({
-        "task_id": str(task.id),
-        "task_name": task.task_name,
-        "status": task.status.value if hasattr(task.status, "value") else task.status,
-        "priority": task.priority,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    })
+    await publish_task_event(task) # Publish event after task is cancelled and status is updated
     await session.refresh(task)
     return task
 
@@ -90,13 +84,7 @@ async def retry_task(task_id: str, session: AsyncSession = Depends(get_session))
 
     logger.info(f"Task {task.id} is being retried by user.")
     await session.commit()
-    await publish({
-        "task_id": str(task.id),
-        "task_name": task.task_name,
-        "status": task.status.value if hasattr(task.status, "value") else task.status,
-        "priority": task.priority,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    })
+    await publish_task_event(task) # Publish event after task is retried and status is updated
     await session.refresh(task)
     return task
 
@@ -157,13 +145,7 @@ async def retry_all_dlq_tasks(session: AsyncSession = Depends(get_session)):
         task.started_at = None
         task.completed_at = None
         await session.commit()
-        await publish({
-            "task_id": str(task.id),
-            "task_name": task.task_name,
-            "status": task.status.value if hasattr(task.status, "value") else task.status,
-            "priority": task.priority,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        await publish_task_event(task) # Publish event after task is retried and status is updated
         await push_task(str(task.id), task.priority)
 
         tasks_retried_total.labels(

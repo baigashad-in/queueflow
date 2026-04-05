@@ -14,11 +14,6 @@ redis_client = aioredis.from_url(
     decode_responses = True,
 )
 
-# Queue key constants
-# QUEUE_HIGH = "queueflow:queue:high"      # priority >=8
-# QUEUE_NORMAL = "queueflow:queue:medium"  # priority >=4 and <=7
-# QUEUE_LOW = "queueflow:queue:low"        # priority <=3
-
 def _get_queue_key(priority: int) -> str:
     """Map a numeric priority to the correct Redis list key."""
     if priority >= 8:

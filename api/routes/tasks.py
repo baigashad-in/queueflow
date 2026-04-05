@@ -13,7 +13,7 @@ from core.models import TaskStatus
 from core.queue import push_task
 from core.metrics import tasks_submitted_total
 from core.scheduler import schedule_task
-from core.events import publish
+from core.events import publish_task_event
 from core.db_models import Tenant, TaskRecord
 
 from api.auth import get_current_tenant
@@ -33,9 +33,6 @@ async def submit_task(
 ):
     """
     Submit a new task to the queue.
-    The task is saved tot he database with PENDING status.
-
-    In Phase 3, this will also push the task into the Redis queue.
     """
 
     task = TaskRecord(
@@ -70,14 +67,7 @@ async def submit_task(
         logger.info(f"Task queued: {task.id} [{task.task_name}] priority={task.priority}")
 
     await session.commit()
-
-    await publish({
-    "task_id": str(task.id),
-    "task_name": task.task_name,
-    "status": task.status.value if hasattr(task.status, "value") else task.status,
-    "priority": task.priority,
-    "timestamp": datetime.now(timezone.utc).isoformat(),
-    })
+    await publish_task_event(task) # Publish event after task is submitted and status is updated
     await session.refresh(task)
     return task
 

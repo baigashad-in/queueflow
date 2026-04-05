@@ -5,7 +5,7 @@ from core.constants import RATE_LIMIT_PREFIX
 
 logger = logging.getLogger(__name__)
 
-# RATE_LIMIT_PREFIX = "queueflow:ratelimit:"
+
 DEFAULT_RATE_LIMIT = 60 # requests per minute
 
 async def check_rate_limit(tenant_id: str, limit: int = DEFAULT_RATE_LIMIT) -> dict:

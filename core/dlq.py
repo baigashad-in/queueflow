@@ -4,7 +4,6 @@ from core.constants import DLQ_KEY
 
 logger = logging.getLogger(__name__)
 
-# DLQ_KEY = "queueflow:dlq"
 
 async def push_to_dlq(task_id: str) -> None:
     """Push a failed task ID to the Dead Letter Queue (DLQ)."""

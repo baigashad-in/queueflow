@@ -3,10 +3,9 @@ import logging
 
 from core.queue import redis_client
 from core.constants import EVENTS_CHANNEL
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
-
-# CHANNEL = "queueflow:events"
 
 # Redis Pub/Sub implementation (for multi-worker setups)
 async def publish(event: dict) -> None:
@@ -24,4 +23,14 @@ async def subscribe_to_events():
     finally:
         await pubsub.unsubscribe(EVENTS_CHANNEL)
 
+
+async def publish_task_event(task) -> None:
+    """Publish a task status change event."""
+    await publish({
+        "task_id": str(task.id),
+        "task_name": task.task_name,
+        "status": task.status.value if hasattr(task.status, "value") else task.status,
+        "priority": task.priority,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
         

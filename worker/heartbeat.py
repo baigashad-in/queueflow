@@ -8,7 +8,6 @@ from core.constants import HEARTBEAT_PREFIX
 
 logger = logging.getLogger(__name__)
 
-# HEARTBEAT_PREFIX = "queueflow:worker:"
 
 worker_id = str(uuid.uuid4())[:8]  # Short unique ID for this worker instance
 

@@ -10,7 +10,7 @@ from core.queue import pop_task, get_queue_depths
 from core.database import get_session
 from core.db_models import TaskRecord
 from core.models import TaskStatus
-from core.events import publish
+from core.events import publish_task_event
 from core.dlq import push_to_dlq, get_dlq_depth
 from core.scheduler import schedule_task
 from core.lock import acquire_lock, release_lock
@@ -47,13 +47,7 @@ async def process_task(task: TaskRecord, session) -> None:
     task.started_at = datetime.now(timezone.utc)
     await session.commit()
 
-    await publish({
-        "task_id": str(task.id),
-        "task_name": task.task_name,
-        "status": task.status.value if hasattr(task.status, "value") else task.status,
-        "priority": task.priority,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    })
+    await publish_task_event(task) # Publish initial RUNNING event before executing the task
 
     start_time = time.monotonic()
 
@@ -78,13 +72,8 @@ async def process_task(task: TaskRecord, session) -> None:
         task.completed_at = datetime.now(timezone.utc)
         task.max_results = result
         await session.commit()
-        await publish({
-            "task_id": str(task.id),
-            "task_name": task.task_name,
-            "status": task.status.value if hasattr(task.status, "value") else task.status,
-            "priority": task.priority,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        await publish_task_event(task) # Publish COMPLETED event
+
         logger.info(f"Task {task.id} completed in {duration: .2f}s. Result: {result}")
     
     except Exception as e:
@@ -113,13 +102,7 @@ async def process_task(task: TaskRecord, session) -> None:
             await push_to_dlq(str(task.id))
             logger.error(f"Task {task.id} exhausted retries and is now marked as DEAD.")
         await session.commit()
-        await publish({
-            "task_id": str(task.id),
-            "task_name": task.task_name,
-            "status": task.status.value if hasattr(task.status, "value") else task.status,
-            "priority": task.priority,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        await publish_task_event(task) # Publish FAILED event
 
 
 async def process_with_limit(semaphore, task_id):

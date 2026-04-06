@@ -3,7 +3,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import uuid
 import logging
-from datetime import datetime, timezone
 
 from core.database import get_session
 from core.db_models import TaskRecord
@@ -13,7 +12,7 @@ from core.queue import push_task
 from core.metrics import tasks_retried_total
 from api.schemas import TaskResponse
 from core.events import publish_task_event
-from core.constants import CANCELLATION_MESSAGE
+from services.task_service import cancel_task as apply_cancellation, reset_task_for_retry
 
 
 router = APIRouter(tags=["Lifecycle"])
@@ -47,10 +46,8 @@ async def cancel_task(task_id: str, session: AsyncSession = Depends(get_session)
         raise HTTPException(status_code = 409, detail = f"Task cannot be cancelled from status {task.status.value}")
     
     # if we get here, the task is either PENDING or QUEUED and can be cancelled
-    task.status = TaskStatus.FAILED
-    task.completed_at = datetime.now(timezone.utc)
-    logger.info(f"Task {task.id} {CANCELLATION_MESSAGE}")
-    task.error_message = CANCELLATION_MESSAGE
+    logger.info(f"Task {task.id} cancelled by user.")
+    await apply_cancellation(task)
     await session.commit()
     await publish_task_event(task) # Publish event after task is cancelled and status is updated
     await session.refresh(task)
@@ -71,11 +68,7 @@ async def retry_task(task_id: str, session: AsyncSession = Depends(get_session))
     await remove_from_dlq(str(task.id)) # If the task isn't in the DLQ, LREM does nothing, it returns 0. No unnecessary Redis round-trip
 
     # if we get here, the task is either FAILED or DEAD and can be retried
-    task.status = TaskStatus.QUEUED
-    task.error_message = None
-    task.retry_count = 0
-    task.started_at = None
-    task.completed_at = None
+    await reset_task_for_retry(task)
     await push_task(str(task.id), task.priority)
     tasks_retried_total.labels(
         task_name = task.task_name,
@@ -139,11 +132,7 @@ async def retry_all_dlq_tasks(session: AsyncSession = Depends(get_session)):
             continue  # Skip if task not found in database
 
         # Reset and re-enqueue (same as single retry)
-        task.status = TaskStatus.QUEUED
-        task.error_message = None
-        task.retry_count = 0
-        task.started_at = None
-        task.completed_at = None
+        await reset_task_for_retry(task)
         await session.commit()
         await publish_task_event(task) # Publish event after task is retried and status is updated
         await push_task(str(task.id), task.priority)
@@ -162,8 +151,3 @@ async def purge_dead_letter_queue():
     """Permanently remove all tasks from the Dead Letter Queue (DLQ). Returns the number of tasks that were removed."""
     removed_count = await purge_dlq()
     return {"message": f"DLQ purged. {removed_count} tasks removed."}
-
-
-
-
- 

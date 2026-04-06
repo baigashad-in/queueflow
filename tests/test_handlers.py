@@ -13,10 +13,12 @@ async def test_send_email_handler():
 async def test_process_image_handler():
     """Test the process_image handler."""
     result = await dispatch("process_image", {
-        "image_url": "http://example.com/image.jpg",
-        "operation": "resize",
+        "image_url": "https://picsum.photos/200/200",
+        "width": 100,
+        "height": 100,
     })
     assert result["status"] == "processed"
+    assert result["new_size"] == [100, 100]
 
 async def test_generate_report_handler():
     """Test the generate_report handler."""
@@ -24,6 +26,7 @@ async def test_generate_report_handler():
         "report_type": "summary",
     })
     assert result["status"] == "generated"
+    assert "filename" in result
 
 async def test_unknown_handler_raises():
     """Dispatching a task with an unknown name should raise an error."""

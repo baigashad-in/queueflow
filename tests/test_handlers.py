@@ -38,3 +38,21 @@ async def test_all_handlers_registered():
     assert "send_email" in TASK_REGISTRY
     assert "process_image" in TASK_REGISTRY
     assert "generate_report" in TASK_REGISTRY
+
+
+async def test_send_email_missing_to():
+    with pytest.raises(ValueError):
+        await dispatch("send_email", {
+            "subject": "Hello",
+        })
+
+async def test_process_image_missing_url():
+    with pytest.raises(ValueError):
+        await dispatch("process_image", {
+            "width": 100,
+        })
+
+async def test_send_email_fallback_no_webhook_url():
+    result = await dispatch("send_email", {"to": "user@example.com", "subject": "Hello"})
+    assert result["status"] == "delivered"
+    assert result["webhook_status"] is None

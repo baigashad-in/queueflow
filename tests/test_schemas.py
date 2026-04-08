@@ -84,3 +84,39 @@ async def test_task_name_gets_lowercased():
         max_retries = 6
     )
     assert request.task_name == "send_email"
+
+async def test_max_retries_too_high():
+    """Max retries above 10 should be rejected."""
+    with pytest.raises(ValueError):
+        TaskSubmitRequest(
+            task_name = "send_email",
+            payload = {"to": "test@example.com"},
+            max_retries = 11
+        )
+
+async def test_max_retries_negative():
+    """Negative max retries should be rejected."""
+    with pytest.raises(ValueError):
+        TaskSubmitRequest(
+            task_name = "send_email",
+            payload = {"to": "test@example.com"},
+            max_retries = -1
+        )
+async def test_negative_delay():
+    """Negative delay values should be rejected."""
+    with pytest.raises(ValueError):
+        TaskSubmitRequest(
+            task_name = "send_email",
+            payload = {"to": "test@example.com"},
+            delay_seconds = -10
+        )
+
+async def test_valid_delay():
+    """Valid delay values should be accepted."""
+    request = TaskSubmitRequest(
+        task_name = "send_email",
+        payload = {"to": "test@example.com"},
+        delay_seconds = 30
+    )
+    assert request.delay_seconds == 30
+

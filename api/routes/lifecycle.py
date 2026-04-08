@@ -34,7 +34,8 @@ async def cancel_task(task_id: str, session: AsyncSession = Depends(get_session)
     task = await get_task_or_404(task_id, session)
     cancellable_statuses = [TaskStatus.PENDING, TaskStatus.QUEUED]
     if task.status not in cancellable_statuses:
-        raise HTTPException(status_code = 409, detail = f"Task cannot be cancelled from status {task.status.value}")
+        status_str = task.status.value if hasattr(task.status, "value") else task.status
+        raise HTTPException(status_code=409, detail=f"Task cannot be cancelled from status {status_str}")
     
     # if we get here, the task is either PENDING or QUEUED and can be cancelled
     logger.info(f"Task {task.id} cancelled by user.")
@@ -53,7 +54,8 @@ async def retry_task(task_id: str, session: AsyncSession = Depends(get_session))
     task = await get_task_or_404(task_id, session)
     retryable_statuses = [TaskStatus.FAILED, TaskStatus.DEAD]
     if task.status not in retryable_statuses:
-        raise HTTPException(status_code = 409, detail = f"Only tasks with FAILED or DEAD status can be retried. Current status: {task.status.value}")
+        status_str = task.status.value if hasattr(task.status, "value") else task.status
+        raise HTTPException(status_code=409, detail=f"Only tasks with FAILED or DEAD status can be retried. Current status: {status_str}")
     
   
     await remove_from_dlq(str(task.id)) # If the task isn't in the DLQ, LREM does nothing, it returns 0. No unnecessary Redis round-trip

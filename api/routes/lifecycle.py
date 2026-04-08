@@ -1,35 +1,26 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 import uuid
 import logging
 
 from core.database import get_session
 from core.db_models import TaskRecord
 from core.models import TaskStatus
-from core.dlq import get_dlq_contents, get_dlq_depth, remove_from_dlq, purge_dlq, pop_from_dlq
+from core.dlq import get_dlq_contents, remove_from_dlq, purge_dlq, pop_from_dlq
 from core.queue import push_task
 from core.metrics import tasks_retried_total
 from api.schemas import TaskResponse
 from core.events import publish_task_event
 from services.task_service import cancel_task as apply_cancellation, reset_task_for_retry
-
+from repositories.task_repo import get_by_ids, get_by_id
 
 router = APIRouter(tags=["Lifecycle"])
 logger = logging.getLogger(__name__)
 
 async def get_task_or_404(task_id: str, session: AsyncSession) -> TaskRecord:
-    try:
-        task_uuid = uuid.UUID(task_id)
-    except ValueError:
-        raise HTTPException(status_code = 400, detail = "Invalid task ID format")
-    
-    result = await session.execute(
-        select(TaskRecord).where(TaskRecord.id == task_uuid)
-    )
-    task = result.scalar_one_or_none()
+    task = await get_by_id(session, task_id)
     if not task:
-        raise HTTPException(status_code = 404, detail = "Task not found")
+        raise HTTPException(status_code=404, detail="Task not found")
     return task
 
 @router.post("/tasks/{task_id}/cancel", response_model = TaskResponse, status_code=200)
@@ -99,10 +90,8 @@ async def view_dlq( session: AsyncSession = Depends(get_session)):
     if not uuid_list:
         return []  # Return empty list if no valid task IDs
     
-    result = await session.execute(
-        select(TaskRecord).where(TaskRecord.id.in_(uuid_list))
-    )
-    tasks = result.scalars().all()
+    # Fetch task details from the database for the valid UUIDs using repository function that can handle batch fetching
+    tasks = await get_by_ids(session, uuid_list)
     return tasks
     
 
@@ -116,17 +105,9 @@ async def retry_all_dlq_tasks(session: AsyncSession = Depends(get_session)):
         task_id = await pop_from_dlq()
         if task_id is None:
             break  # No more tasks in DLQ
-        try:
-            task_uuid = uuid.UUID(task_id)
-        except ValueError:
-            failed += 1
-            continue  # Skip invalid task IDs
+        
 
-        result = await session.execute(
-            select(TaskRecord).where(TaskRecord.id == task_uuid)
-        )
-        task = result.scalar_one_or_none()
-
+        task = await get_by_id(session, task_id)
         if not task:
             failed += 1
             continue  # Skip if task not found in database

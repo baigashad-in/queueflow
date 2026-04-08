@@ -5,7 +5,6 @@ import logging
 from typing import Optional
 from datetime import datetime, timezone
 
-from django import tasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
@@ -98,6 +97,10 @@ async def get_task(
     tenant: Tenant = Depends(get_current_tenant),
     ):
     """Get details of a specific task by ID."""
+    try:
+        uuid.UUID(task_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid task ID format")
     task = await get_by_id(session, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")

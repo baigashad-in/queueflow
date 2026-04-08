@@ -7,6 +7,12 @@ CANCELLATION_MESSAGE = "Cancelled by user"
 QUEUE_HIGH = "queueflow:queue:high"      # priority >=8
 QUEUE_NORMAL = "queueflow:queue:medium"  # priority >=4 and <=7
 QUEUE_LOW = "queueflow:queue:low"        # priority <=3
+
+# Queue label names (used in metrics and queue depths)
+QUEUE_LABEL_HIGH = "high"
+QUEUE_LABEL_MEDIUM = "medium"
+QUEUE_LABEL_LOW = "low"
+
 DLQ_KEY = "queueflow:dlq"
 SCHEDULED_KEY = "queueflow:scheduled"
 LOCK_PREFIX = "queueflow:lock:"

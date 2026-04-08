@@ -28,7 +28,7 @@ from prometheus_client import start_http_server
 from worker.scheduler_loop import scheduler_loop
 from worker.heartbeat import heartbeat_loop
 from worker.handlers import dispatch
-from core.constants import CANCELLATION_MESSAGE
+from core.constants import CANCELLATION_MESSAGE, QUEUE_LABEL_HIGH, QUEUE_LABEL_MEDIUM, QUEUE_LABEL_LOW
 
 
 logging.basicConfig(
@@ -129,7 +129,15 @@ async def process_with_limit(semaphore, task_id):
         finally:
             await release_lock(task_id)
         
-
+async def update_idle_metrics():
+    # Update queue depth gauges
+    depths = await get_queue_depths()
+    queue_depth.labels(queue = QUEUE_LABEL_HIGH).set(depths[QUEUE_LABEL_HIGH])
+    queue_depth.labels(queue = QUEUE_LABEL_MEDIUM).set(depths[QUEUE_LABEL_MEDIUM])
+    queue_depth.labels(queue = QUEUE_LABEL_LOW).set(depths[QUEUE_LABEL_LOW])
+    current_dlq_depth = await get_dlq_depth()
+    dlq_depth.set(current_dlq_depth)
+    return depths, current_dlq_depth
 async def poll_loop():
     """Main worker loop - polls REdis and processes tasks."""
     logger.info("PyQueue Worker starting up...")
@@ -155,13 +163,7 @@ async def poll_loop():
             task_id = await pop_task()
 
             if not task_id:
-                # Update queue depth gauges
-                depths = await get_queue_depths()
-                queue_depth.labels(queue = "high").set(depths["high"])
-                queue_depth.labels(queue = "medium").set(depths["medium"])
-                queue_depth.labels(queue = "low").set(depths["low"])
-                current_dlq_depth = await get_dlq_depth()
-                dlq_depth.set(current_dlq_depth)
+                depths, current_dlq_depth = await update_idle_metrics()
                 logger.info(f"No tasks found. Queue depths: {depths}")
                 await asyncio.sleep(5)
                 continue

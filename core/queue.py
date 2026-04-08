@@ -3,7 +3,7 @@ import json
 import logging
 
 from core.config import settings
-from core.constants import QUEUE_HIGH, QUEUE_NORMAL, QUEUE_LOW
+from core.constants import QUEUE_HIGH, QUEUE_NORMAL, QUEUE_LOW, QUEUE_LABEL_HIGH, QUEUE_LABEL_MEDIUM, QUEUE_LABEL_LOW
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ async def pop_task() -> str | None:
 async def get_queue_depths() -> dict[str, int]:
     """Return the current depth of each queue. Useful for monitoring."""
     return{
-        "high": await redis_client.llen(QUEUE_HIGH),
-        "medium": await redis_client.llen(QUEUE_NORMAL),
-        "low": await redis_client.llen(QUEUE_LOW),
+        QUEUE_LABEL_HIGH: await redis_client.llen(QUEUE_HIGH),
+        QUEUE_LABEL_MEDIUM: await redis_client.llen(QUEUE_NORMAL),
+        QUEUE_LABEL_LOW: await redis_client.llen(QUEUE_LOW),
         }

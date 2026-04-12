@@ -6,14 +6,19 @@ from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 from core.config import settings
 from core.database import init_db
+import core.metrics
+
 from api.routes.tasks import router as tasks_router
 from api.routes.lifecycle import router as lifecycle_router
-import core.metrics
+
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+
 from api.routes.ws import router as ws_router
 from api.routes.tenants import router as tenants_router
 from api.auth import get_current_tenant
 from api.middleware import RequestIDMiddleware, RateLimitMiddleware
+from api.routes.auth_routes import router as auth_router
 
 
 logging.basicConfig(
@@ -42,10 +47,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins = ["http://localhost:5173", "http://20.240.221.65:8000"],
+    allow_credentials = True,
+    allow_methods = ["*"],
+    allow_headers = ["*"],
+)
+
 app.include_router(tasks_router)
 app.include_router(lifecycle_router)
 app.include_router(ws_router)
 app.include_router(tenants_router)
+app.include_router(auth_router)
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(RequestIDMiddleware)
 

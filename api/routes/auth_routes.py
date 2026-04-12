@@ -38,12 +38,12 @@ async def login(
         key = "qf_session",
         value = key,
         httponly = True, # JavaScript cannot read this
-        secure = True,   # Set True when you have HTTPS
+        secure = False,   # Set True when you have HTTPS otherwise False
         samesite = "lax", # Prevent CSRF from other sites
         max_age = 86400, # Expires in 24 hours
     )
 
-    return {"tenant_id": tenant.name, "message": "Logged in"}
+    return {"tenant_name": tenant.name, "message": "Logged in"}
 
 @router.post("/logout")
 async def logout(response: Response):

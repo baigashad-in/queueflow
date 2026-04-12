@@ -1,6 +1,8 @@
 import time
 import uuid
 import logging
+import json
+import os
 
 from typing import Optional
 from datetime import datetime, timezone
@@ -20,6 +22,8 @@ from api.auth import get_current_tenant
 from api.schemas import TaskSubmitRequest, TaskResponse, TaskListResponse
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
+
 from repositories.task_repo import get_by_id, get_by_tenant
 
 router = APIRouter(prefix = "/tasks", tags = ["Tasks"])
@@ -107,3 +111,31 @@ async def get_task(
     if task.tenant_id != tenant.id:
         raise HTTPException(status_code=404, detail="Task not found")
     return task
+
+
+@router.get("/{task_id}/download", response_class=FileResponse)
+async def download_report(
+    task_id: str,
+    session: AsyncSession = Depends(get_session),
+    tenant: Tenant = Depends(get_current_tenant),
+):
+    """Download the result file for a completed task."""
+    task = await get_by_id(session, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.tenant_id != tenant.id:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.status != "completed":
+        raise HTTPException(status_code=400, detail="Task is not completed")
+
+    # Check if the task result has a filename
+    result = task.max_results or {}
+    filename = result.get("filename")
+    if not filename or not os.path.exists(filename):
+        raise HTTPException(status_code=404, detail="No file available for download")
+
+    return FileResponse(
+        path=filename,
+        filename=os.path.basename(filename),
+        media_type="application/json",
+    )

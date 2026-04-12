@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select
 import uuid
 import logging
@@ -17,6 +18,12 @@ async def create_tenant(
     session: AsyncSession = Depends(get_session),
 ):
     """Create a new tenant."""
+    # Check if tenant name already exists
+    existing_tenant = await session.execute(
+        select(Tenant).where(Tenant.name == request.name)
+    )
+    if existing_tenant.scalar_one_or_none():
+        raise HTTPException(status_code = 409, detail = f"Tenant with name '{request.name}' already exists")
     tenant = Tenant(name = request.name)
     session.add(tenant)
     await session.commit()

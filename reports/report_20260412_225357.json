@@ -1,0 +1,10 @@
+{
+  "report_type": "summary",
+  "generated_at": "2026-04-12T22:53:57.259881+00:00",
+  "total_tasks": 6,
+  "status_breakdown": {
+    "running": 1,
+    "completed": 4,
+    "dead": 1
+  }
+}

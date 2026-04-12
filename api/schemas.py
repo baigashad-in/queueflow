@@ -62,7 +62,7 @@ class TaskResponse(BaseModel):
     status: TaskStatus
     max_retries: int
     retry_count: int
-    result: Optional[dict] = None
+    max_results: Optional[dict] = None
     error_message: Optional[str] = None
     created_at: datetime
     updated_at: datetime

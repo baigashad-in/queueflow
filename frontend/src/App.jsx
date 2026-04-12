@@ -215,7 +215,9 @@ function App() {
     catch (err) {
       setError(err.message)
     }
-    setLoading(false)
+    finally {
+      setLoading(false)
+    }
   }
 
   const submitTask = async () => {
@@ -305,6 +307,24 @@ function App() {
       setError(err.message)
     }
   }
+
+  const downloadReport = async (taskId) => {
+  try {
+    const res = await fetch(`${API_URL}/tasks/${taskId}/download`, {
+      credentials: "include",
+    })
+    if (!res.ok) throw new Error("Download failed")
+    const blob = await res.blob()
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `queueflow_report_${taskId.substring(0, 8)}.pdf`
+    a.click()
+    window.URL.revokeObjectURL(url)
+  } catch (e) {
+    setError(e.message)
+  }
+}
 
 
   // If no API key, show login screen
@@ -419,7 +439,7 @@ function App() {
           <p className='subtitle'> Distributed Task Queue Dashboard</p>
         </div>
         <div className="header-right">
-          <span style={{ color: "94a3b8", fontSize: 13, fontWeight: 600 }}>{tenantName}</span>
+          <span style={{ color: "#94a3b8", fontSize: 13, fontWeight: 600 }}>{tenantName}</span>
           <button onClick={logout} className="btn-ghost">Logout</button>
         </div>
 
@@ -476,6 +496,11 @@ function App() {
                     {(task.status === "failed" || task.status === "dead") && (
                       <button onClick={() => retryTask(task.id)} className="btn-retry">
                         Retry
+                      </button>
+                    )}
+                    {task.status === "completed" && task.task_name === "generate_report" && (
+                      <button onClick={() => downloadReport(task.id)} className="btn-retry">
+                        Download
                       </button>
                     )}
                   </td>

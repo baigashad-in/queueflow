@@ -375,6 +375,63 @@ function App() {
     }
   }
 
+  useEffect (() => {
+    if (!loggedIn) return
+    
+    const wsURL = API_URL.replace("http", "ws") + "/ws/tasks"
+    let ws = null
+    let reconnectTimer = null
+
+    const connectWebSocket = () => {
+      ws = new WebSocket(wsURL)
+
+    // Creates the connection. unlike the fetch calls, this connection will persist and be reused for real-time updates until the user logs out or the connection drops. 
+    ws.onopen = () => {
+      console.log("WebSocket connected")
+    }
+
+    // Handle incoming messages - these are sent by the server whenever a task changes status, so we can update the UI in real-time without waiting for the next poll
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data)
+      console.log("WebSocket message received:", data.task_name, data.status)
+
+      // Update the specific task
+      setTasks(prev => {
+        const updated = prev.map(t => 
+        t.id === data.task_id ? {...t, status: data.status} : t
+      )
+        const newStats = { total: updated.length, queued: 0, running: 0, completed: 0, failed: 0, retrying: 0, dead: 0 }
+        updated.forEach(t => {
+          if (newStats[t.status] !== undefined) newStats[t.status]++
+        })
+        setStats(newStats)
+        return updated
+      })
+    }
+    
+      // if the connection drops, try to reconnect every 3 seconds. Without this, any dropped connection would require a manual page refresh to get real-time updates again
+      ws.onclose = () => {
+        console.log("WebSocket disconnected, reconnecting in 3s...")
+        reconnectTimer = setTimeout(connectWebSocket, 3000)
+      }
+
+      ws.onerror = (err) => {
+        console.error("WebSocket error:", err)
+        ws.close()
+      }
+    }
+    
+    connectWebSocket()
+
+    // Cleanup on unmount or when loggedIn changes
+    return () => {
+      if (ws) ws.close()
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+    }
+  }, [loggedIn])
+
+
+
 
   // If no API key, show login screen
   if (!loggedIn) {

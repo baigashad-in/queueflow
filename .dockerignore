@@ -1,0 +1,8 @@
+frontend/
+sdk/
+node_modules/
+.git/
+__pycache__/
+*.pyc
+processed_images/
+reports/

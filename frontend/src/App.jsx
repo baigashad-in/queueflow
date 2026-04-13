@@ -60,6 +60,8 @@ function App() {
   const [showSubmit, setShowSubmit] = useState(false) // Control visibility of submit button on task form
   const [tenantNameInput, setTenantNameInput] = useState("") // State for tenant name input in create tenant form
   const [tenantName, setTenantName] = useState("") // Store tenant name after login
+  const [activeTab, setActiveTab] = useState("tasks")  // "tasks" or "dlq"
+  const [dlqTasks, setDlqTasks] = useState([])
   const [submitForm, setSubmitForm] = useState({
     task_name: "send_email",
     priority: 5,
@@ -121,7 +123,6 @@ function App() {
   }
 
 
-
   useEffect(() => {
     if (!loggedIn) return
 
@@ -152,9 +153,15 @@ function App() {
     }
 
     fetchTasks()
-    const interval = setInterval(fetchTasks, 5000)
+    if (activeTab === "dlq") fetchDlq()
+
+    const interval = setInterval(() => {
+      fetchTasks()
+      if (activeTab === "dlq") fetchDlq()
+    }, 5000)
+
     return () => clearInterval(interval)
-  }, [loggedIn])
+  }, [loggedIn, activeTab])
 
   const createTenant = async () => {
     if (!tenantNameInput.trim()) { setError("Tenant name is required"); return }
@@ -309,22 +316,64 @@ function App() {
   }
 
   const downloadReport = async (taskId) => {
-  try {
-    const res = await fetch(`${API_URL}/tasks/${taskId}/download`, {
-      credentials: "include",
-    })
-    if (!res.ok) throw new Error("Download failed")
-    const blob = await res.blob()
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `queueflow_report_${taskId.substring(0, 8)}.pdf`
-    a.click()
-    window.URL.revokeObjectURL(url)
-  } catch (e) {
-    setError(e.message)
+    try {
+      const res = await fetch(`${API_URL}/tasks/${taskId}/download`, {
+        credentials: "include",
+      })
+      if (!res.ok) throw new Error("Download failed")
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `queueflow_report_${taskId.substring(0, 8)}.pdf`
+      a.click()
+      window.URL.revokeObjectURL(url)
+    } catch (e) {
+      setError(e.message)
+    }
   }
-}
+
+  const fetchDlq = async () => {
+    try {
+      const res = await fetch(`${API_URL}/dlq`, {
+        credentials: "include",
+      })
+      if (!res.ok) throw new Error("Failed to fetch DLQ")
+      const data = await res.json()
+      setDlqTasks(data)
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
+  const retryAllDlq = async () => {
+    try {
+      const res = await fetch(`${API_URL}/dlq/retry-all`, {
+        method: "POST",
+        credentials: "include",
+      })
+      if (!res.ok) throw new Error("Failed to retry DLQ tasks")
+      const data = await res.json()
+      setError("")
+      fetchDlq()
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
+  const purgeDlq = async () => {
+    if (!window.confirm("Permanently remove all DLQ tasks? This cannot be undone.")) return
+    try {
+      const res = await fetch(`${API_URL}/dlq/purge`, {
+        method: "POST",
+        credentials: "include",
+      })
+      if (!res.ok) throw new Error("Failed to purge DLQ")
+      setDlqTasks([])
+    } catch (e) {
+      setError(e.message)
+    }
+  }
 
 
   // If no API key, show login screen
@@ -456,67 +505,136 @@ function App() {
 
       <main className="content">
         {error && <p className="error-msg">{error}</p>}
-        <div className="table-container">
-          <table className="task-table">
-            <thead>
-              <tr>
-                <th>Task ID</th>
-                <th>Name</th>
-                <th>Status</th>
-                <th>Priority</th>
-                <th>Retries</th>
-                <th>Created</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tasks.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="empty-row">
-                    No tasks yet - submit a task to get started
-                  </td>
-                </tr>
-              )}
-              {tasks.map(task => (
-                <tr key={task.id} className="task-row">
-                  <td className="mono"> {task.id.substring(0, 8)}</td>
-                  <td className="task-name">{task.task_name}</td>
-                  <td><StatusBadge status={task.status} /></td>
-                  <td><PriorityBadge priority={task.priority} /></td>
-                  <td className="mono"> {task.retry_count}/{task.max_retries}</td>
-                  <td className="time-cell">
-                    {new Date(task.created_at).toLocaleString()}
-                  </td>
-                  <td>
-                    {(task.status === "pending" || task.status === "queued") && (
-                      <button onClick={() => cancelTask(task.id)} className="btn-cancel">
-                        Cancel
-                      </button>
-                    )}
-                    {(task.status === "failed" || task.status === "dead") && (
-                      <button onClick={() => retryTask(task.id)} className="btn-retry">
-                        Retry
-                      </button>
-                    )}
-                    {task.status === "completed" && task.task_name === "generate_report" && (
-                      <button onClick={() => downloadReport(task.id)} className="btn-retry">
-                        Download
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+
+
+
+
+        <div className="tabs">
+          <button
+            className={`tab ${activeTab === "tasks" ? "tab-active" : ""}`}
+            onClick={() => setActiveTab("tasks")}
+          >
+            Tasks
+          </button>
+          <button
+            className={`tab ${activeTab === "dlq" ? "tab-active" : ""}`}
+            onClick={() => { setActiveTab("dlq"); fetchDlq(); }}
+          >
+            Dead Letter Queue
+          </button>
         </div>
-        {/*Submit button*/}
-        <button
-          onClick={() => setShowSubmit(true)}
-          className="btn-primary"
-          style={{ marginBottom: 16, marginTop: 8 }}
-        >
-          + Submit Task
-        </button>
+
+        {activeTab === "tasks" && (
+          <>
+            {/* Submit button */}
+            <button onClick={() => setShowSubmit(true)} className="btn-primary" style={{ marginBottom: 16 }}>
+              + Submit Task
+            </button>
+
+            <div className="table-container">
+              <table className="task-table">
+                <thead>
+                  <tr>
+                    <th>Task ID</th>
+                    <th>Name</th>
+                    <th>Status</th>
+                    <th>Priority</th>
+                    <th>Retries</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tasks.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="empty-row">
+                        No tasks yet - submit a task to get started
+                      </td>
+                    </tr>
+                  )}
+                  {tasks.map(task => (
+                    <tr key={task.id} className="task-row">
+                      <td className="mono">{task.id.substring(0, 8)}</td>
+                      <td className="task-name">{task.task_name}</td>
+                      <td><StatusBadge status={task.status} /></td>
+                      <td><PriorityBadge priority={task.priority} /></td>
+                      <td className="mono">{task.retry_count}/{task.max_retries}</td>
+                      <td className="time-cell">
+                        {new Date(task.created_at).toLocaleString()}
+                      </td>
+                      <td>
+                        {(task.status === "pending" || task.status === "queued") && (
+                          <button onClick={() => cancelTask(task.id)} className="btn-cancel">Cancel</button>
+                        )}
+                        {(task.status === "failed" || task.status === "dead") && (
+                          <button onClick={() => retryTask(task.id)} className="btn-retry">Retry</button>
+                        )}
+                        {task.status === "completed" && task.task_name === "generate_report" && (
+                          <button onClick={() => downloadReport(task.id)} className="btn-retry">Download</button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {activeTab === "dlq" && (
+          <>
+            <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+              <button onClick={retryAllDlq} className="btn-primary" disabled={dlqTasks.length === 0}>
+                Retry All
+              </button>
+              <button onClick={purgeDlq} className="btn-cancel" disabled={dlqTasks.length === 0}>
+                Purge All
+              </button>
+            </div>
+
+            <div className="table-container">
+              <table className="task-table">
+                <thead>
+                  <tr>
+                    <th>Task ID</th>
+                    <th>Name</th>
+                    <th>Error</th>
+                    <th>Retries</th>
+                    <th>Failed At</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dlqTasks.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="empty-row">
+                        DLQ is empty — no dead tasks
+                      </td>
+                    </tr>
+                  )}
+                  {dlqTasks.map(task => (
+                    <tr key={task.id} className="task-row">
+                      <td className="mono">{task.id.substring(0, 8)}</td>
+                      <td className="task-name">{task.task_name}</td>
+                      <td className="error-cell" title={task.error_message || ""} >
+                        {task.error_message || "No error message"}
+                      </td>
+                      <td className="mono">{task.retry_count}/{task.max_retries}</td>
+                      <td className="time-cell">
+                        {task.updated_at ? new Date(task.updated_at).toLocaleString() : "N/A"}
+                      </td>
+                      <td>
+                        <button onClick={() => retryTask(task.id)} className="btn-retry">
+                          Retry
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
         {/* Submit Modal */}
         {showSubmit && (
           <div className="modal-overlay" onClick={() => setShowSubmit(false)}>

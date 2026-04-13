@@ -1,0 +1,9 @@
+{
+  "report_type": "summary",
+  "generated_at": "2026-04-13T16:33:41.246336+00:00",
+  "total_tasks": 4,
+  "status_breakdown": {
+    "completed": 3,
+    "running": 1
+  }
+}

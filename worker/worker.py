@@ -53,7 +53,7 @@ async def process_task(task: TaskRecord, session) -> None:
 
     try:
         # Dispatch to real handler
-        result = await dispatch(task.task_name, task.payload)
+        result = await dispatch(task.task_name, task.payload, task_id = str(task.id))
 
         duration = time.monotonic() - start_time
 

@@ -42,9 +42,9 @@ function PriorityBadge({ priority }) {
   )
 }
 
-const API_URL = "http://localhost:8000"
+// const API_URL = "http://localhost:8000"
 // const API_URL = "http://20.240.221.65:8000"
-// const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 function App() {
 
@@ -408,7 +408,7 @@ function App() {
         return updated
       })
     }
-    
+
       // if the connection drops, try to reconnect every 3 seconds. Without this, any dropped connection would require a manual page refresh to get real-time updates again
       ws.onclose = () => {
         console.log("WebSocket disconnected, reconnecting in 3s...")

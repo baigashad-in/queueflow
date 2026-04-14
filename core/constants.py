@@ -7,6 +7,7 @@ CANCELLATION_MESSAGE = "Cancelled by user"
 QUEUE_HIGH = "queueflow:queue:high"      # priority >=8
 QUEUE_NORMAL = "queueflow:queue:medium"  # priority >=4 and <=7
 QUEUE_LOW = "queueflow:queue:low"        # priority <=3
+QUEUE_CRITICAL = "queueflow:queue:critical" # reserved for future use, e.g. for tasks that need to bypass rate limits and be processed immediately
 
 # Queue label names (used in metrics and queue depths)
 QUEUE_LABEL_HIGH = "high"

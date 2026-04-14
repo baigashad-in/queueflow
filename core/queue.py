@@ -3,7 +3,7 @@ import json
 import logging
 
 from core.config import settings
-from core.constants import QUEUE_HIGH, QUEUE_NORMAL, QUEUE_LOW, QUEUE_LABEL_HIGH, QUEUE_LABEL_MEDIUM, QUEUE_LABEL_LOW
+from core.constants import QUEUE_CRITICAL, QUEUE_HIGH, QUEUE_NORMAL, QUEUE_LOW, QUEUE_LABEL_HIGH, QUEUE_LABEL_MEDIUM, QUEUE_LABEL_LOW
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,9 @@ redis_client = aioredis.from_url(
 
 def _get_queue_key(priority: int) -> str:
     """Map a numeric priority to the correct Redis list key."""
-    if priority >= 8:
+    if priority >= 15:
+        return QUEUE_CRITICAL
+    elif priority >= 8:
         return QUEUE_HIGH
     elif priority >= 4:
         return QUEUE_NORMAL
@@ -36,7 +38,7 @@ async def pop_task() -> str | None:
     Pop the next task ID from the highest-priority non-empty queue.
     Returns None if all queues are empty.
     """
-    for queue_key in [QUEUE_HIGH, QUEUE_NORMAL, QUEUE_LOW]:
+    for queue_key in [QUEUE_CRITICAL, QUEUE_HIGH, QUEUE_NORMAL, QUEUE_LOW]:
         task_id = await redis_client.rpop(queue_key)
         if task_id:
             logger.info(f"Task{task_id} popped from {queue_key}")

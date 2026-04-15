@@ -163,7 +163,7 @@ color: #1c1c1c;
 
 /* LOGIN */
 .login-screen{
-display : flex;
+display: flex;
 flex-direction: column;
 align-items: center;
 justify-content: center;
@@ -245,7 +245,7 @@ color: #1c1c1c;
 /* GRID */
 .stats-grid {
 display: grid;
-grid-template-columns: repeat(7, 1fr);
+grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
 gap: 12px;
 padding: 20px 28px;
 }
@@ -336,7 +336,7 @@ background: #e5e5e5;
   display: flex;
   gap: 0;
   margin-bottom: 16px;
-  border-bottom: 1px solid #1e1e2e;
+  border-bottom: 1px solid #cccccc;
 }
 
 .tab {
@@ -351,7 +351,7 @@ background: #e5e5e5;
 }
 
 .tab:hover {
-  color: #e2e8f0;
+  color: #e63946;
 }
 
 .tab-active {

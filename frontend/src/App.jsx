@@ -642,7 +642,7 @@ function App() {
                   .filter(task => !statusFilter || task.status == statusFilter)
                   .map(task => (
                     <tr key={task.id} className="task-row">
-                      <td className="mono">{task.id.substring(0, 8)}</td>
+                      <td className="mono">{task.id?.substring(0, 8)}</td>
                       <td className="task-name">{task.task_name}</td>
                       <td><StatusBadge status={task.status} /></td>
                       <td><PriorityBadge priority={task.priority} /></td>
@@ -702,7 +702,7 @@ function App() {
                   )}
                   {dlqTasks.map(task => (
                     <tr key={task.id} className="task-row">
-                      <td className="mono">{task.id.substring(0, 8)}</td>
+                      <td className="mono">{task.id?.substring(0, 8)}</td>
                       <td className="task-name">{task.task_name}</td>
                       <td className="error-cell" title={task.error_message || ""} >
                         {task.error_message || "No error message"}
@@ -838,7 +838,7 @@ function App() {
                 className="input"
               />
 
-              <label className = "field-lable">Callbakc URL (optional)</label>
+              <label className = "field-label">Callback URL (optional)</label>
               <input
                 type = "text"
                 placeholder = "https://your-app.com/webhook/task-done"
@@ -850,7 +850,7 @@ function App() {
               <div className="modal-actions">
                 <button onClick={() => setShowSubmit(false)} className="btn-ghost"> Cancel </button>
                 <button onClick={submitTask} disabled={loading} className="btn-primary">
-                  {loading ? "submitting..." : "Submit Task"}
+                  {loading ? "Submitting..." : "Submit Task"}
                 </button>
               </div>
             </div>

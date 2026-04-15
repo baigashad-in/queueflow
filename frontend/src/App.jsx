@@ -62,6 +62,7 @@ function App() {
   const [tenantName, setTenantName] = useState("") // Store tenant name after login
   const [activeTab, setActiveTab] = useState("tasks")  // "tasks" or "dlq"
   const [dlqTasks, setDlqTasks] = useState([])
+  const [statusFilter, setStatusFilter] = useState(null) // New state to track status filter in task list (null means no filter)
   // State for new task form
   const [submitForm, setSubmitForm] = useState({
     task_name: "send_email",
@@ -547,13 +548,13 @@ function App() {
 
 
   const statCards = [
-    { label: "Total Tasks", value: stats.total, color: "#a1a6ad" },
-    { label: "Queued Tasks", value: stats.queued, color: "#60a5fa" },
-    { label: "Running Tasks", value: stats.running, color: "#fbbf24" },
-    { label: "Completed Tasks", value: stats.completed, color: "#34d399" },
-    { label: "Failed Tasks", value: stats.failed, color: "#f87171" },
-    { label: "Retrying Tasks", value: stats.retrying, color: "#c084fc" },
-    { label: "Dead Tasks", value: stats.dead, color: "#ef4444" },
+    { label: "Total Tasks", value: stats.total, color: "#a1a6ad", filterKey: null },
+    { label: "Queued Tasks", value: stats.queued, color: "#60a5fa", filterKey: "queued" },
+    { label: "Running Tasks", value: stats.running, color: "#fbbf24", filterKey: "running" },
+    { label: "Completed Tasks", value: stats.completed, color: "#34d399", filterKey: "completed" },
+    { label: "Failed Tasks", value: stats.failed, color: "#f87171", filterKey: "failed" },
+    { label: "Retrying Tasks", value: stats.retrying, color: "#c084fc", filterKey: "retrying" },
+    { label: "Dead Tasks", value: stats.dead, color: "#ef4444", filterKey: "dead" },
   ]
 
   return (
@@ -574,7 +575,12 @@ function App() {
 
       <div className="stats-grid">
         {statCards.map(card => (
-          <div key={card.label} className="stat-card">
+          <div 
+          key={card.label} 
+          className={`stat-card ${statusFilter === card.filterKey ? "stat-card-active" : ""}`}
+          onClick = {() => setStatusFilter(statusFilter == card.filterKey ? null : card.filterKey)}
+          style = {{cursor: "pointer"}}
+          >
             <div className="stat-label">{card.label}</div>
             <div className="stat-value" style={{ color: card.color }}>{card.value}</div>
           </div>
@@ -626,11 +632,15 @@ function App() {
                   {tasks.length === 0 && (
                     <tr>
                       <td colSpan={7} className="empty-row">
-                        No tasks yet - submit a task to get started
+                        {statusFilter 
+                        ? `No ${statusFilter} tasks found`
+                        : "No tasks yet - submit a task to get started"}
                       </td>
                     </tr>
                   )}
-                  {tasks.map(task => (
+                  {tasks
+                  .filter(task => !statusFilter || task.status == statusFilter)
+                  .map(task => (
                     <tr key={task.id} className="task-row">
                       <td className="mono">{task.id.substring(0, 8)}</td>
                       <td className="task-name">{task.task_name}</td>

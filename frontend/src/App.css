@@ -51,6 +51,17 @@ padding: 16px 18px;
 border-radius: 12px;
 background: #f9f9f9;
 border: 1px solid #dddddd;
+transition: border-color 0.2s, transform 0.2s;
+}
+
+.stat-card:hover{
+  border-color: #60a5fa;
+  transform: translateY(-2px);
+}
+
+.stat-card-active {
+  border-color: #60a5fa;
+  box-shadow: 0 0 12px rgba(96, 165, 250, 0.3);
 }
 
 .stat-label{
@@ -356,4 +367,6 @@ background: #e5e5e5;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+
 

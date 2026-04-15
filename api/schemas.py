@@ -42,6 +42,12 @@ class TaskSubmitRequest(BaseModel):
         description = "Cron expression for recurring tasks at scheduled time. Overrides delay_seconds if both are provided."
     )
 
+    callback_url: Optional[str] = Field(
+        default = None,
+        max_length = 2048,
+        description = "URL to receive a POST when the task completes or dies."
+    )
+
 
 
     @field_validator("task_name")
@@ -68,6 +74,7 @@ class TaskResponse(BaseModel):
     updated_at: datetime
     started_at: Optional[datetime] = None
     completed_at : Optional[datetime] = None
+    callback_url: Optional[str] = None
 
     model_config = {"from_attributes": True}
      

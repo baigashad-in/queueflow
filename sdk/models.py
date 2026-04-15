@@ -19,6 +19,7 @@ class Task:
     updated_at: str
     started_at: Optional[str]
     completed_at: Optional[str]
+    callback_url: Optional[str] = None
 
     @property
     def is_complete(self) -> bool:
@@ -45,7 +46,8 @@ class Task:
             created_at = data["created_at"],
             updated_at = data["updated_at"],
             started_at = data.get("started_at"),
-            completed_at = data.get("completed_at")
+            completed_at = data.get("completed_at"),
+            callback_url = data.get("callback_url"),
         )
     
 @dataclass

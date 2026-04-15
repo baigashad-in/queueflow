@@ -70,6 +70,10 @@ class TaskRecord(Base):
     # Foreign key to Tenant for multi-tenancy support (optional)
     tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True, index=True)
 
+    # Optional callback URL to notify when task is completed (for async processing)
+    callback_url = Column(String(2048), nullable=True)
+
+
     def __repr__(self):
         return f"<Task {self.id} [{self.task_name}] status = {self.status}>"
     

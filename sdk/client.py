@@ -42,6 +42,7 @@ class QueueFlowClient:
         priority: int = 5,
         max_retries: int = 3,
         delay_seconds: int = None,
+        callback_url: str = None,
     ) -> Task:
         """Submit a new task."""
         body = {
@@ -52,6 +53,8 @@ class QueueFlowClient:
         }
         if delay_seconds is not None:
             body["delay_seconds"] = delay_seconds
+        if callback_url is not None:
+            body["callback_url"] = callback_url
 
         response = self._client.post("/tasks/", json=body)
         self._handle_error(response)

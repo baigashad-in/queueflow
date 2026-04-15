@@ -49,6 +49,7 @@ async def submit_task(
         max_retries = request.max_retries,
         status = TaskStatus.PENDING,
         tenant_id = tenant.id,
+        callback_url = request.callback_url,
     )
 
     session.add(task)

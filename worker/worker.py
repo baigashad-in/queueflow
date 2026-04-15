@@ -4,6 +4,7 @@ import time
 import signal
 import uuid
 import random
+import httpx
 
 from core.config import settings
 from core.queue import pop_task, get_queue_depths
@@ -73,6 +74,7 @@ async def process_task(task: TaskRecord, session) -> None:
         task.max_results = result
         await session.commit()
         await publish_task_event(task) # Publish COMPLETED event
+        await fire_webhook(task) # Don't fire the webhook on retries — only on final outcomes (completed or dead).
 
         logger.info(f"Task {task.id} completed in {duration: .2f}s. Result: {result}")
     
@@ -182,6 +184,27 @@ async def poll_loop():
         await asyncio.gather(*active_tasks)
     logger.info("All tasks completed. Worker shutdown cleanly.")
     
+async def fire_webhook(task: TaskRecord) -> None:
+    """POST task result to the callback URL if one was provided."""
+    if not task.callback_url:
+        return
+    
+    payload= {
+        "task_id": str(task.id),
+        "task_name" : task.task_name,
+        "status": task.status.value if hasattr(task.status, "value") else task.status,
+        "result": task.max_results,
+        "error_message": task.error_message,
+        "retry_count": task.retry_count,
+        "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+    }
+
+    try: 
+        async with httpx.AsyncClient() as client:
+            response = await client.post(task.callback_url, json=payload, timeout = 10)
+            logger.info(f"Webhook fired for task {task.id} to {task.callback_url} - HTTP { response.status_code}")
+    except Exception as e:
+        logger.error(f"Webhook failed for task {task.id} to {task.callback_url}: {e}")
 
 
 if __name__ == "__main__":

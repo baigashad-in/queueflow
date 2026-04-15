@@ -62,6 +62,7 @@ function App() {
   const [tenantName, setTenantName] = useState("") // Store tenant name after login
   const [activeTab, setActiveTab] = useState("tasks")  // "tasks" or "dlq"
   const [dlqTasks, setDlqTasks] = useState([])
+  // State for new task form
   const [submitForm, setSubmitForm] = useState({
     task_name: "send_email",
     priority: 5,
@@ -77,7 +78,8 @@ function App() {
     height: 300,
     // Report fields
     report_type: "summary",
-  }) // State for new task form
+    callback_url: "",
+  }) 
   const [stats, setStats] = useState({
     total: 0, queued: 0, running: 0, completed: 0,
     failed: 0, retrying: 0, dead: 0,
@@ -260,6 +262,11 @@ function App() {
 
       if (submitForm.delay_seconds) {
         body.delay_seconds = parseInt(submitForm.delay_seconds)
+      }
+
+      // Only include callback_url if it's not empty after trimming whitespace. This way we avoid sending an empty string to the server which might cause validation errors if the server expects a valid URL or null.
+      if (submitForm.callback_url.trim()){
+        body.callback_url = submitForm.callback_url.trim()
       }
 
       const res = await fetch(`${API_URL}/tasks/`, {
@@ -805,6 +812,15 @@ function App() {
                 value={submitForm.max_retries}
                 onChange={e => setSubmitForm({ ...submitForm, max_retries: parseInt(e.target.value) || 0 })}
                 className="input"
+              />
+
+              <label className = "field-lable">Callbakc URL (optional)</label>
+              <input
+                type = "text"
+                placeholder = "https://your-app.com/webhook/task-done"
+                value = {submitForm.callback_url}
+                onChange = {e => setSubmitForm ({ ...submitForm, callback_url: e.target.value})}
+                className = "input"
               />
 
               <div className="modal-actions">

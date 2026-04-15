@@ -276,8 +276,8 @@ function App() {
         body: JSON.stringify(body),
       })
       if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.detail || "Failed to submit task")
+        const errData= await res.json()
+        throw new Error(errData.detail || "Failed to submit task")
       }
 
       setShowSubmit(false)
@@ -297,8 +297,8 @@ function App() {
         credentials: "include",
       })
       if (!response.ok) {
-        const err = await response.json()
-        throw new Error(err.detail || "Failed to cancel task")
+        const errData= await response.json()
+        throw new Error(errData.detail || "Failed to cancel task")
       }
     }
     catch (err) {
@@ -313,8 +313,8 @@ function App() {
         credentials: "include",
       })
       if (!response.ok) {
-        const err = await response.json()
-        throw new Error(err.detail || "Failed to retry task")
+        const errData= await response.json()
+        throw new Error(errData.detail || "Failed to retry task")
       }
     }
     catch (err) {
@@ -438,6 +438,20 @@ function App() {
   }, [loggedIn])
 
 
+    // Utility function to copy text to clipboard, with fallback for older browsers. Allows user to copy new API key.
+    const copyToClipboard = (text) => {
+      if(navigator.clipboard){
+        navigator.clipboard.writeText(text)
+      }
+      else {
+        const textarea = document.createElement("textarea")
+        textarea.value = text
+        document.body.appendChild(textarea)
+        textarea.select()
+        document.execCommand("copy")
+        document.body.removeChild(textarea)
+      }
+    }
 
 
   // If no API key, show login screen
@@ -493,7 +507,7 @@ function App() {
                   style={{ width: 300 }}
                 />
                 <button
-                  onClick={() => navigator.clipboard.writeText(createdKey)}
+                  onClick={() => copyToClipboard(createdKey)}
                   className="btn-secondary"
                 >
                   Copy

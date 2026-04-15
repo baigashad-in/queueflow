@@ -1,24 +1,25 @@
-from fastapi import FastAPI
-from fastapi.responses import Response
-from contextlib import asynccontextmanager
 import logging
+import os
+
+from contextlib import asynccontextmanager
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
+import core.metrics
 from core.config import settings
 from core.database import init_db
-import core.metrics
 
-from api.routes.tasks import router as tasks_router
-from api.routes.lifecycle import router as lifecycle_router
-
+from fastapi import FastAPI
+from fastapi.responses import Response, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.routes.tasks import router as tasks_router
+from api.routes.lifecycle import router as lifecycle_router
 from api.routes.ws import router as ws_router
 from api.routes.tenants import router as tenants_router
+from api.routes.auth_routes import router as auth_router
 from api.auth import get_current_tenant
 from api.middleware import RequestIDMiddleware, RateLimitMiddleware
-from api.routes.auth_routes import router as auth_router
 
 
 logging.basicConfig(
@@ -47,14 +48,20 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Configure CORS to allow requests from the frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins = ["http://localhost:5173", "http://20.240.221.65:8000"],
+    allow_origins = [
+        "http://localhost:5173",
+        "http://20.240.221.65:8000",
+        "http://20.240.221.65",
+    ],
     allow_credentials = True,
     allow_methods = ["*"],
     allow_headers = ["*"],
 )
 
+# Include API routers and middleware
 app.include_router(tasks_router)
 app.include_router(lifecycle_router)
 app.include_router(ws_router)
@@ -62,6 +69,16 @@ app.include_router(tenants_router)
 app.include_router(auth_router)
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(RequestIDMiddleware)
+
+
+# Serve the React dashboard
+@app.get("/dashboard/{path:path}")
+@app.get("/dashboard")
+async def serve_dashboard(path: str = ""):
+    file_path = f"static/dashboard/{path}"
+    if os.path.isfile(file_path):
+        return FileResponse(file_path)
+    return FileResponse("static/dashboard/index.html")
 
 
 # After the app is created, we can mount the static directory

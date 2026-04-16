@@ -63,6 +63,8 @@ function App() {
   const [activeTab, setActiveTab] = useState("tasks")  // "tasks" or "dlq"
   const [dlqTasks, setDlqTasks] = useState([])
   const [statusFilter, setStatusFilter] = useState(null) // New state to track status filter in task list (null means no filter)
+  const [toasts, setToasts] = useState([]) // State for toast notifications
+
   // State for new task form
   const [submitForm, setSubmitForm] = useState({
     task_name: "send_email",
@@ -81,10 +83,12 @@ function App() {
     report_type: "summary",
     callback_url: "",
   }) 
+
+  // Stats for dashboard summary cards
   const [stats, setStats] = useState({
     total: 0, queued: 0, running: 0, completed: 0,
     failed: 0, retrying: 0, dead: 0,
-  })
+  }) 
 
   const saveKey = async () => {
     if (!keyInput.trim()) return
@@ -102,8 +106,8 @@ function App() {
       setLoggedIn(true)
       setTenantName(data.tenant_name)
     }
-    catch (err) {
-      setError(err.message)
+    catch (errData) {
+      setError(errData.message)
     }
     finally {
       setLoading(false)
@@ -136,7 +140,7 @@ function App() {
         })
         if (response.status === 401) {
           setLoggedIn(false)
-          setError("Session expired. Please log in again.")
+          addToast("Session expired. Please log in again.", "error")
           return
         }
         if (!response.ok) throw new Error("Failed to fetch tasks")
@@ -194,8 +198,8 @@ function App() {
       const apiKeyData = await response2.json()
       setCreatedKey(apiKeyData.key) // Store the created API key to show the user
     }
-    catch (err) {
-      setError(err.message)
+    catch (errData) {
+      setError(errData.message)
     }
     finally {
       setLoading(false)
@@ -222,8 +226,8 @@ function App() {
       setTenantName(loginData.tenant_name)
       setCreatedKey("") // Clear the created key from state after successful login
     }
-    catch (err) {
-      setError(err.message)
+    catch (errData) {
+      setError(errData.message)
     }
     finally {
       setLoading(false)
@@ -283,8 +287,8 @@ function App() {
 
       setShowSubmit(false)
     }
-    catch (e) {
-      setError(e.message)
+    catch (errData) {
+      addToast(errData.message, "error")
     }
     finally {
       setLoading(false)
@@ -302,8 +306,8 @@ function App() {
         throw new Error(errData.detail || "Failed to cancel task")
       }
     }
-    catch (err) {
-      setError(err.message)
+    catch (errData) {
+      addToast(errData.message, "error")
     }
   }
 
@@ -318,8 +322,8 @@ function App() {
         throw new Error(errData.detail || "Failed to retry task")
       }
     }
-    catch (err) {
-      setError(err.message)
+    catch (errData) {
+      addToast(errData.message, "error")
     }
   }
 
@@ -336,8 +340,8 @@ function App() {
       a.download = `queueflow_report_${taskId.substring(0, 8)}.pdf`
       a.click()
       window.URL.revokeObjectURL(url)
-    } catch (e) {
-      setError(e.message)
+    } catch (errData) {
+      addToast(errData.message, "error")
     }
   }
 
@@ -362,10 +366,11 @@ function App() {
       })
       if (!res.ok) throw new Error("Failed to retry DLQ tasks")
       const data = await res.json()
+    addToast(`Retried ${data.replayed} tasks`, "success")
       setError("")
       fetchDlq()
-    } catch (e) {
-      setError(e.message)
+    } catch (errData) {
+      addToast(errData.message, "error")
     }
   }
 
@@ -378,8 +383,9 @@ function App() {
       })
       if (!res.ok) throw new Error("Failed to purge DLQ")
       setDlqTasks([])
-    } catch (e) {
-      setError(e.message)
+      addToast("DLQ purged", "success")
+    } catch (errData) {
+      addToast(errData.message, "error")
     }
   }
 
@@ -439,20 +445,29 @@ function App() {
   }, [loggedIn])
 
 
-    // Utility function to copy text to clipboard, with fallback for older browsers. Allows user to copy new API key.
-    const copyToClipboard = (text) => {
-      if(navigator.clipboard){
-        navigator.clipboard.writeText(text)
-      }
-      else {
-        const textarea = document.createElement("textarea")
-        textarea.value = text
-        document.body.appendChild(textarea)
-        textarea.select()
-        document.execCommand("copy")
-        document.body.removeChild(textarea)
-      }
+  // Utility function to copy text to clipboard, with fallback for older browsers. Allows user to copy new API key.
+  const copyToClipboard = (text) => {
+    if(navigator.clipboard){
+      navigator.clipboard.writeText(text)
     }
+    else {
+      const textarea = document.createElement("textarea")
+      textarea.value = text
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand("copy")
+      document.body.removeChild(textarea)
+    }
+  }
+
+  // Instead of the static error message that sits on the page, toasts pop up in the corner and auto-dismiss after a few seconds.
+  const addToast  = (message, type = "error") => {
+    const id = Date.now()
+    setToasts(prev => [...prev, {id, message, type}])
+    setTimeout (() => {
+      setToasts(prev => prev.filter(t => t.id !== id))
+    }, 5000) // Toast will disappear after 5 seconds
+  }
 
 
   // If no API key, show login screen
@@ -588,10 +603,6 @@ function App() {
       </div>
 
       <main className="content">
-        {error && <p className="error-msg">{error}</p>}
-
-
-
 
         <div className="tabs">
           <button
@@ -857,6 +868,20 @@ function App() {
           </div>
         )}
       </main>
+      {/* Toast Notifications */}
+      <div className = "toast-container">
+        {toasts.map(toast => (
+          <div key = {toast.id} className = {`toast toast-${toast.type}`} >
+            <span>{toast.message}</span>
+            <button
+            onClick = {() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
+            className = "toast-close"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

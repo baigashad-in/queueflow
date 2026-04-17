@@ -373,7 +373,7 @@ background: #e5e5e5;
   position: fixed;
   top: 20px;
   right: 20px;
-  z-index: 200;
+  z-index: 2000;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -408,6 +408,12 @@ background: #e5e5e5;
   background: #1a0a0a;
   border: 1px solid #ef444415;
   color: #ef4444;
+}
+
+.toast-success {
+  background: #0a1a0f;
+  border: 1px solid #34d39933;
+  color: #22c55e;
 }
 
 .toast-info{

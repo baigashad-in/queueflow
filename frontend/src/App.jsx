@@ -90,6 +90,31 @@ function App() {
     failed: 0, retrying: 0, dead: 0,
   }) 
 
+  // Instead of the static error message that sits on the page, toasts pop up in the corner and auto-dismiss after a few seconds.
+  const addToast  = (message, type = "error") => {
+    console.log("TOAST:", message, type)
+    const id = Date.now()
+    setToasts(prev => [...prev, {id, message, type}])
+    setTimeout (() => {
+      setToasts(prev => prev.filter(t => t.id !== id))
+    }, 5000) // Toast will disappear after 5 seconds
+  }
+
+  // Utility function to copy text to clipboard, with fallback for older browsers. Allows user to copy new API key.
+  const copyToClipboard = (text) => {
+    if(navigator.clipboard){
+      navigator.clipboard.writeText(text)
+    }
+    else {
+      const textarea = document.createElement("textarea")
+      textarea.value = text
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand("copy")
+      document.body.removeChild(textarea)
+    }
+  }
+
   const saveKey = async () => {
     if (!keyInput.trim()) return
     setLoading(true)
@@ -327,7 +352,7 @@ function App() {
         throw new Error(errData.detail || "Failed to cancel task")
       }
 
-      addToast("Task cancelled", "success")
+      addToast("Task cancelled", "error")
     }
     catch (errData) {
       addToast(errData.message, "error")
@@ -344,7 +369,7 @@ function App() {
         const errData= await response.json()
         throw new Error(errData.detail || "Failed to retry task")
       }
-      addToast("Task queued for retry", "success")
+      addToast("Task queued for retry", "info")
     }
     catch (errData) {
       addToast(errData.message, "error")
@@ -390,7 +415,7 @@ function App() {
       })
       if (!res.ok) throw new Error("Failed to retry DLQ tasks")
       const data = await res.json()
-    addToast(`Retried ${data.replayed} tasks`, "success")
+    addToast(`Retried ${data.replayed} tasks`, "info")
       setError("")
       fetchDlq()
     } catch (errData) {
@@ -407,7 +432,7 @@ function App() {
       })
       if (!res.ok) throw new Error("Failed to purge DLQ")
       setDlqTasks([])
-      addToast("DLQ purged", "success")
+      addToast("DLQ purged", "info")
     } catch (errData) {
       addToast(errData.message, "error")
     }
@@ -472,31 +497,6 @@ function App() {
         })
         setStats(newStats)
   }, [tasks])
-
-
-  // Utility function to copy text to clipboard, with fallback for older browsers. Allows user to copy new API key.
-  const copyToClipboard = (text) => {
-    if(navigator.clipboard){
-      navigator.clipboard.writeText(text)
-    }
-    else {
-      const textarea = document.createElement("textarea")
-      textarea.value = text
-      document.body.appendChild(textarea)
-      textarea.select()
-      document.execCommand("copy")
-      document.body.removeChild(textarea)
-    }
-  }
-
-  // Instead of the static error message that sits on the page, toasts pop up in the corner and auto-dismiss after a few seconds.
-  const addToast  = (message, type = "error") => {
-    const id = Date.now()
-    setToasts(prev => [...prev, {id, message, type}])
-    setTimeout (() => {
-      setToasts(prev => prev.filter(t => t.id !== id))
-    }, 5000) // Toast will disappear after 5 seconds
-  }
 
 
   // If no API key, show login screen

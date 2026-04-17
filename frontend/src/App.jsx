@@ -305,6 +305,8 @@ function App() {
       }
 
       setShowSubmit(false)
+
+      addToast("Task submitted successfully", "success")
     }
     catch (errData) {
       addToast(errData.message, "error")
@@ -324,6 +326,8 @@ function App() {
         const errData= await response.json()
         throw new Error(errData.detail || "Failed to cancel task")
       }
+
+      addToast("Task cancelled", "success")
     }
     catch (errData) {
       addToast(errData.message, "error")
@@ -340,6 +344,7 @@ function App() {
         const errData= await response.json()
         throw new Error(errData.detail || "Failed to retry task")
       }
+      addToast("Task queued for retry", "success")
     }
     catch (errData) {
       addToast(errData.message, "error")

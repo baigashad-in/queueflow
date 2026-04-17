@@ -129,6 +129,25 @@ function App() {
     })
   }
 
+  // Check if user has a valid session on page load.
+  useEffect(() =>{
+    const checkSession = async () => {
+      try{
+        const res = await fetch(`${API_URL}/tasks/?page_size=1`, {
+          credentials: "include",
+        })
+        if (res.ok) {
+          setLoggedIn(true)
+        }
+
+      }
+      catch (errData) {
+        // No valid session, stay on login screen
+      }
+    }
+    checkSession()
+  }, [])
+
 
   useEffect(() => {
     if (!loggedIn) return
@@ -397,6 +416,8 @@ function App() {
     let reconnectTimer = null
 
     const connectWebSocket = () => {
+      if (ws && ws.readyState === WebSocket.OPEN) return // Already connected  
+      
       ws = new WebSocket(wsURL)
 
     // Creates the connection. unlike the fetch calls, this connection will persist and be reused for real-time updates until the user logs out or the connection drops. 
@@ -414,11 +435,6 @@ function App() {
         const updated = prev.map(t => 
         t.id === data.task_id ? {...t, status: data.status} : t
       )
-        const newStats = { total: updated.length, queued: 0, running: 0, completed: 0, failed: 0, retrying: 0, dead: 0 }
-        updated.forEach(t => {
-          if (newStats[t.status] !== undefined) newStats[t.status]++
-        })
-        setStats(newStats)
         return updated
       })
     }
@@ -443,6 +459,14 @@ function App() {
       if (reconnectTimer) clearTimeout(reconnectTimer)
     }
   }, [loggedIn])
+
+  useEffect(() => {
+    const newStats = { total: tasks.length, queued: 0, running: 0, completed: 0, failed: 0, retrying: 0, dead: 0 }
+        tasks.forEach(t => {
+          if (newStats[t.status] !== undefined) newStats[t.status]++
+        })
+        setStats(newStats)
+  }, [tasks])
 
 
   // Utility function to copy text to clipboard, with fallback for older browsers. Allows user to copy new API key.
@@ -593,7 +617,7 @@ function App() {
           <div 
           key={card.label} 
           className={`stat-card ${statusFilter === card.filterKey ? "stat-card-active" : ""}`}
-          onClick = {() => setStatusFilter(statusFilter == card.filterKey ? null : card.filterKey)}
+          onClick = {() => setStatusFilter(statusFilter === card.filterKey ? null : card.filterKey)}
           style = {{cursor: "pointer"}}
           >
             <div className="stat-label">{card.label}</div>
@@ -650,7 +674,7 @@ function App() {
                     </tr>
                   )}
                   {tasks
-                  .filter(task => !statusFilter || task.status == statusFilter)
+                  .filter(task => !statusFilter || task.status === statusFilter)
                   .map(task => (
                     <tr key={task.id} className="task-row">
                       <td className="mono">{task.id?.substring(0, 8)}</td>

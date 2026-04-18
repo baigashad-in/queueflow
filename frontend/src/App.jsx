@@ -64,6 +64,9 @@ function App() {
   const [dlqTasks, setDlqTasks] = useState([])
   const [statusFilter, setStatusFilter] = useState(null) // New state to track status filter in task list (null means no filter)
   const [toasts, setToasts] = useState([]) // State for toast notifications
+  const [page, setPage] = useState(1)
+  const [totalTasks, setTotalTasks] = useState(0)
+  const pageSize = 20
 
   // State for new task form
   const [submitForm, setSubmitForm] = useState({
@@ -179,7 +182,7 @@ function App() {
 
     const fetchTasks = async () => {
       try {
-        const response = await fetch(`${API_URL}/tasks/?page_size=100`, {
+        const response = await fetch(`${API_URL}/tasks/?page=${page}&page_size=${pageSize}`, {
           credentials: "include",
         })
         if (response.status === 401) {
@@ -190,13 +193,7 @@ function App() {
         if (!response.ok) throw new Error("Failed to fetch tasks")
         const data = await response.json()
         setTasks(data.tasks)
-
-        // Calculate stats from tasks
-        const newStats = { total: data.total, queued: 0, running: 0, completed: 0, failed: 0, retrying: 0, dead: 0 }
-        data.tasks.forEach(currentTask => {
-          if (newStats[currentTask.status] !== undefined) newStats[currentTask.status]++
-        })
-        setStats(newStats)
+        setTotalTasks(data.total)
       }
       catch (err) {
         setError(err.message)
@@ -212,7 +209,7 @@ function App() {
     }, 5000)
 
     return () => clearInterval(interval)
-  }, [loggedIn, activeTab])
+  }, [loggedIn, activeTab, page])
 
   const createTenant = async () => {
     if (!tenantNameInput.trim()) { setError("Tenant name is required"); return }
@@ -491,12 +488,13 @@ function App() {
   }, [loggedIn])
 
   useEffect(() => {
-    const newStats = { total: tasks.length, queued: 0, running: 0, completed: 0, failed: 0, retrying: 0, dead: 0 }
+    // Calculate stats from tasks
+    const newStats = { total: totalTasks, queued: 0, running: 0, completed: 0, failed: 0, retrying: 0, dead: 0 }
         tasks.forEach(t => {
           if (newStats[t.status] !== undefined) newStats[t.status]++
         })
         setStats(newStats)
-  }, [tasks])
+  }, [tasks, totalTasks])
 
 
   // If no API key, show login screen
@@ -622,7 +620,9 @@ function App() {
           <div 
           key={card.label} 
           className={`stat-card ${statusFilter === card.filterKey ? "stat-card-active" : ""}`}
-          onClick = {() => setStatusFilter(statusFilter === card.filterKey ? null : card.filterKey)}
+          onClick = {() => {setStatusFilter(statusFilter === card.filterKey ? null : card.filterKey)
+            setPage(1)
+          }}
           style = {{cursor: "pointer"}}
           >
             <div className="stat-label">{card.label}</div>
@@ -706,6 +706,23 @@ function App() {
                 </tbody>
               </table>
             </div>
+            {totalTasks > pageSize && (
+              <div className = "pagination" >
+                <button onClick = {() => setPage(p => Math.max(1, p-1))} disabled={page === 1} className="btn-ghost"
+                  >
+                  ← Previous
+                </button>
+                <span className = "page-info">
+                  Page {page} of {Math.ceil(totalTasks / pageSize)}
+                </span>
+
+                <button onClick = {() => setPage(p => Math.min(Math.ceil(totalTasks/pageSize), p + 1))}
+                  disabled = {page >= Math.ceil(totalTasks/pageSize)}
+                  className = "btn-ghost">
+                  Next →
+                  </button>
+              </div>
+            )}
           </>
         )}
 

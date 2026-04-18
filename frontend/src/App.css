@@ -436,4 +436,18 @@ background: #e5e5e5;
   opacity: 1;
 }
 
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 16px;
+  padding: 12px 0;
+}
+
+.page-info {
+  font-size: 13px;
+  color: #777777;
+  font-weight: 600;
+}
 

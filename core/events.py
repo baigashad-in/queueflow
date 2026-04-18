@@ -31,6 +31,7 @@ async def publish_task_event(task) -> None:
         "task_name": task.task_name,
         "status": task.status.value if hasattr(task.status, "value") else task.status,
         "priority": task.priority,
+        "tenant_id": str(task.tenant_id) if task.tenant_id else None,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     })
         

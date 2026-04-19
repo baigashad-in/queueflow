@@ -38,7 +38,7 @@ async def login(
         key = "qf_session",
         value = key,
         httponly = True, # JavaScript cannot read this
-        secure = False,   # Set True when you have HTTPS otherwise False
+        secure = True,   # Set True when you have HTTPS otherwise False
         samesite = "lax", # Prevent CSRF from other sites
         max_age = 86400, # Expires in 24 hours
     )

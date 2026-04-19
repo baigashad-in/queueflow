@@ -55,6 +55,7 @@ app.add_middleware(
         "http://localhost:5173",
         "http://20.240.221.65:8000",
         "http://20.240.221.65",
+        "https://queueflow.swedencentral.cloudapp.azure.com",
     ],
     allow_credentials = True,
     allow_methods = ["*"],

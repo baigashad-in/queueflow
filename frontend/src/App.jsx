@@ -227,7 +227,7 @@ function App() {
       }
       const tenant = await response1.json()
 
-      const response2 = await fetch(`${API_URL}/tenants/${tenant.id}/api-keys/`, {
+      const response2 = await fetch(`${API_URL}/tenants/${tenant.id}/api-keys`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ label: "dashboard" }),
@@ -340,7 +340,7 @@ function App() {
 
   const cancelTask = async (taskId) => {
     try {
-      const response = await fetch(`${API_URL}/tasks/${taskId}/cancel/`, {
+      const response = await fetch(`${API_URL}/tasks/${taskId}/cancel`, {
         method: "POST",
         credentials: "include",
       })
@@ -358,7 +358,7 @@ function App() {
 
   const retryTask = async (taskId) => {
     try {
-      const response = await fetch(`${API_URL}/tasks/${taskId}/retry/`, {
+      const response = await fetch(`${API_URL}/tasks/${taskId}/retry`, {
         method: "POST",
         credentials: "include",
       })

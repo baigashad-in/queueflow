@@ -1,18 +1,23 @@
-from fastapi import APIRouter, HTTPException, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
+
 import uuid
 import logging
 
 from core.database import get_session
-from core.db_models import TaskRecord
+from core.db_models import TaskRecord, Tenant
 from core.models import TaskStatus
-from core.dlq import get_dlq_contents, remove_from_dlq, purge_dlq, pop_from_dlq
+from core.dlq import get_dlq_contents, push_to_dlq, remove_from_dlq, purge_dlq, pop_from_dlq
 from core.queue import push_task
 from core.metrics import tasks_retried_total
-from api.schemas import TaskResponse
 from core.events import publish_task_event
+
+from api.auth import get_current_tenant
+from api.schemas import TaskResponse
+
 from services.task_service import cancel_task as apply_cancellation, reset_task_for_retry
 from repositories.task_repo import get_by_ids, get_by_id
+
+from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["Lifecycle"])
 logger = logging.getLogger(__name__)
@@ -24,7 +29,11 @@ async def get_task_or_404(task_id: str, session: AsyncSession) -> TaskRecord:
     return task
 
 @router.post("/tasks/{task_id}/cancel", response_model = TaskResponse, status_code=200)
-async def cancel_task(task_id: str, session: AsyncSession = Depends(get_session)):
+async def cancel_task(
+    task_id: str, 
+    session: AsyncSession = Depends(get_session),
+    tenant: Tenant = Depends(get_current_tenant),
+    ):
     """
     Cancel a task that is currently in the queue or being processed(pending).
     If the task is in the queue, it will be removed and marked as CANCELLED.
@@ -32,6 +41,8 @@ async def cancel_task(task_id: str, session: AsyncSession = Depends(get_session)
     """
     
     task = await get_task_or_404(task_id, session)
+    if task.tenant_id != tenant.id:
+        raise HTTPException(status_code=404, detail="Task not found")  # Don't reveal existence of the task if it belongs to another tenant
     cancellable_statuses = [TaskStatus.PENDING, TaskStatus.QUEUED]
     if task.status not in cancellable_statuses:
         status_str = task.status.value if hasattr(task.status, "value") else task.status
@@ -46,12 +57,18 @@ async def cancel_task(task_id: str, session: AsyncSession = Depends(get_session)
     return task
 
 @router.post("/tasks/{task_id}/retry", response_model = TaskResponse)
-async def retry_task(task_id: str, session: AsyncSession = Depends(get_session)):
+async def retry_task(
+    task_id: str, 
+    session: AsyncSession = Depends(get_session),
+    tenant: Tenant = Depends(get_current_tenant)
+):
     """
     Retry a task that is currently marked as FAILED and DEAD.
     The task will be re-queued and its status will be updated to PENDING.
     """
     task = await get_task_or_404(task_id, session)
+    if task.tenant_id != tenant.id:
+        raise HTTPException(status_code=404, detail="Task not found")  # Don't reveal existence of the task if it belongs to another tenant
     retryable_statuses = [TaskStatus.FAILED, TaskStatus.DEAD]
     if task.status not in retryable_statuses:
         status_str = task.status.value if hasattr(task.status, "value") else task.status
@@ -75,7 +92,10 @@ async def retry_task(task_id: str, session: AsyncSession = Depends(get_session))
     return task
 
 @router.get("/dlq", response_model = list[TaskResponse]  )
-async def view_dlq( session: AsyncSession = Depends(get_session)):
+async def view_dlq( 
+    session: AsyncSession = Depends(get_session),
+    tenant: Tenant = Depends(get_current_tenant)
+    ):
     """View the contents of the Dead Letter Queue (DLQ). Returns a list of task IDs currently in the DLQ."""
     task_ids = await get_dlq_contents()
     if not task_ids:
@@ -94,11 +114,14 @@ async def view_dlq( session: AsyncSession = Depends(get_session)):
     
     # Fetch task details from the database for the valid UUIDs using repository function that can handle batch fetching
     tasks = await get_by_ids(session, uuid_list)
-    return tasks
+    return [t for t in tasks if t.tenant_id == tenant.id]  # Filter tasks to only include those belonging to the current tenant
     
 
 @router.post("/dlq/retry-all")
-async def retry_all_dlq_tasks(session: AsyncSession = Depends(get_session)):
+async def retry_all_dlq_tasks(
+    session: AsyncSession = Depends(get_session),
+    tenant: Tenant = Depends(get_current_tenant),
+):
     """Retry all tasks currently in the Dead Letter Queue (DLQ). Returns the number of tasks that were retried."""
     replayed = 0
     failed = 0
@@ -113,6 +136,12 @@ async def retry_all_dlq_tasks(session: AsyncSession = Depends(get_session)):
         if not task:
             failed += 1
             continue  # Skip if task not found in database
+
+        # Only retry tasks that belong to the current tenant
+        if task.tenant_id != tenant.id:
+            # Push it back - it belongs to another tenant, we shouldn't be retrying it
+            await push_to_dlq(task.id)
+            continue
 
         # Reset and re-enqueue (same as single retry)
         await reset_task_for_retry(task)
@@ -130,7 +159,18 @@ async def retry_all_dlq_tasks(session: AsyncSession = Depends(get_session)):
 
 
 @router.post("/dlq/purge", status_code = 200)
-async def purge_dead_letter_queue():
-    """Permanently remove all tasks from the Dead Letter Queue (DLQ). Returns the number of tasks that were removed."""
-    removed_count = await purge_dlq()
-    return {"message": f"DLQ purged. {removed_count} tasks removed."}
+async def purge_dead_letter_queue(
+    session: AsyncSession = Depends(get_session),
+    tenant: Tenant = Depends(get_current_tenant)
+):
+    """Permanently remove all tasks from the Dead Letter Queue (DLQ) of the current tenant. Returns the number of tasks that were removed."""
+    task_ids = await get_dlq_contents()
+    removed = 0
+    # Only remove tasks that belong to the current tenant. We don't want to accidentally purge another tenant's tasks.
+    for task_id in task_ids:
+        task = await get_by_id(session, task_id)
+        if task and task.tenant_id == tenant.id:
+            await remove_from_dlq(task_id)
+            removed += 1
+
+    return {"message": f"DLQ purged. {removed} tasks removed."}

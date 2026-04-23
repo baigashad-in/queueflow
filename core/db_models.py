@@ -15,7 +15,8 @@ class Tenant(Base):
     name = Column(String(255), unique=True, nullable=False)
     is_active = Column(Boolean, default = True)
     created_at = Column(DateTime(timezone=True), nullable=False, default = lambda: datetime.now(timezone.utc))
-
+    is_admin = Column(Boolean, default = False)  # Flag to indicate if this tenant has admin privileges
+    
     def __repr__(self):
         return f"<Tenant {self.name} [{'active' if self.is_active else 'inactive'}]>"
 

@@ -451,3 +451,15 @@ background: #e5e5e5;
   font-weight: 600;
 }
 
+.admin-stats {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.section-title{
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+

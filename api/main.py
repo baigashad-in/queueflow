@@ -18,6 +18,7 @@ from api.routes.lifecycle import router as lifecycle_router
 from api.routes.ws import router as ws_router
 from api.routes.tenants import router as tenants_router
 from api.routes.auth_routes import router as auth_router
+from api.routes.admin_routes import router as admin_router
 from api.auth import get_current_tenant
 from api.middleware import RequestIDMiddleware, RateLimitMiddleware
 
@@ -68,9 +69,9 @@ app.include_router(lifecycle_router)
 app.include_router(ws_router)
 app.include_router(tenants_router)
 app.include_router(auth_router)
+app.include_router(admin_router)
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(RequestIDMiddleware)
-
 
 # Serve the React dashboard
 @app.get("/dashboard/{path:path}")

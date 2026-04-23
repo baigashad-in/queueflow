@@ -64,8 +64,12 @@ function App() {
   const [dlqTasks, setDlqTasks] = useState([])
   const [statusFilter, setStatusFilter] = useState(null) // New state to track status filter in task list (null means no filter)
   const [toasts, setToasts] = useState([]) // State for toast notifications
-  const [page, setPage] = useState(1)
-  const [totalTasks, setTotalTasks] = useState(0)
+  const [page, setPage] = useState(1) // State for pagination
+  const [totalTasks, setTotalTasks] = useState(0) // Total number of tasks, used for pagination
+  const [adminTenants, setAdminTenants] = useState([]) // List of tenants for admin view
+  const [adminTasks, setAdminTasks] = useState([]) // List of all tasks across tenants for admin view
+  const [adminStats, setAdminStats] = useState(null) // Stats for admin dashboard
+  const [isAdmin, setIsAdmin] = useState(false) // Flag to indicate if the logged-in tenant has admin privileges or not
   const pageSize = 20
 
   // State for new task form
@@ -85,27 +89,27 @@ function App() {
     // Report fields
     report_type: "summary",
     callback_url: "",
-  }) 
+  })
 
   // Stats for dashboard summary cards
   const [stats, setStats] = useState({
     total: 0, queued: 0, running: 0, completed: 0,
     failed: 0, retrying: 0, dead: 0,
-  }) 
+  })
 
   // Instead of the static error message that sits on the page, toasts pop up in the corner and auto-dismiss after a few seconds.
-  const addToast  = (message, type = "error") => {
+  const addToast = (message, type = "error") => {
     console.log("TOAST:", message, type)
     const id = Date.now()
-    setToasts(prev => [...prev, {id, message, type}])
-    setTimeout (() => {
+    setToasts(prev => [...prev, { id, message, type }])
+    setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id))
     }, 5000) // Toast will disappear after 5 seconds
   }
 
   // Utility function to copy text to clipboard, with fallback for older browsers. Allows user to copy new API key.
   const copyToClipboard = (text) => {
-    if(navigator.clipboard){
+    if (navigator.clipboard) {
       navigator.clipboard.writeText(text)
     }
     else {
@@ -132,6 +136,7 @@ function App() {
       if (!res.ok) throw new Error("Invalid API key")
       const data = await res.json()
       setLoggedIn(true)
+      fetchAdminStats() // Check if user is admin and fetch stats if so
       setTenantName(data.tenant_name)
     }
     catch (errData) {
@@ -158,16 +163,16 @@ function App() {
   }
 
   // Check if user has a valid session on page load.
-  useEffect(() =>{
+  useEffect(() => {
     const checkSession = async () => {
-      try{
+      try {
         const res = await fetch(`${API_URL}/tasks/?page_size=1`, {
           credentials: "include",
         })
         if (res.ok) {
           setLoggedIn(true)
+          fetchAdminStats() // Check if user is admin and fetch stats if so
         }
-
       }
       catch (errData) {
         // No valid session, stay on login screen
@@ -264,6 +269,7 @@ function App() {
       }
       const loginData = await response3.json()
       setLoggedIn(true)
+      fetchAdminStats() // Check if user is admin and fetch stats if so
       setTenantName(loginData.tenant_name)
       setCreatedKey("") // Clear the created key from state after successful login
     }
@@ -311,7 +317,7 @@ function App() {
       }
 
       // Only include callback_url if it's not empty after trimming whitespace. This way we avoid sending an empty string to the server which might cause validation errors if the server expects a valid URL or null.
-      if (submitForm.callback_url.trim()){
+      if (submitForm.callback_url.trim()) {
         body.callback_url = submitForm.callback_url.trim()
       }
 
@@ -322,7 +328,7 @@ function App() {
         body: JSON.stringify(body),
       })
       if (!res.ok) {
-        const errData= await res.json()
+        const errData = await res.json()
         throw new Error(errData.detail || "Failed to submit task")
       }
 
@@ -345,7 +351,7 @@ function App() {
         credentials: "include",
       })
       if (!response.ok) {
-        const errData= await response.json()
+        const errData = await response.json()
         throw new Error(errData.detail || "Failed to cancel task")
       }
 
@@ -363,7 +369,7 @@ function App() {
         credentials: "include",
       })
       if (!response.ok) {
-        const errData= await response.json()
+        const errData = await response.json()
         throw new Error(errData.detail || "Failed to retry task")
       }
       addToast("Task queued for retry", "info")
@@ -412,7 +418,7 @@ function App() {
       })
       if (!res.ok) throw new Error("Failed to retry DLQ tasks")
       const data = await res.json()
-    addToast(`Retried ${data.replayed} tasks`, "info")
+      addToast(`Retried ${data.replayed} tasks`, "info")
       setError("")
       fetchDlq()
     } catch (errData) {
@@ -435,36 +441,98 @@ function App() {
     }
   }
 
-  useEffect (() => {
+  const fetchAdminStats = async () => {
+    try {
+      const res = await fetch(`${API_URL}/admin/stats`, {
+        credentials: "include",
+      })
+      if (res.status === 403) {
+        setIsAdmin(false)
+        return
+      }
+      if (!res.ok) throw new Error("Failed to fetch admin stats")
+      setIsAdmin(true)
+      setAdminStats(await res.json())
+    }
+    catch (errData) {
+      setIsAdmin(false)
+    }
+  }
+
+  const fetchAdminTenants = async () => {
+    try {
+      const res = await fetch(`${API_URL}/admin/tenants`, {
+        credentials: "include",
+      })
+      if (!res.ok) throw new Error("Failed to fetch tenants")
+      setAdminTenants(await res.json())
+    }
+    catch (errData) {
+      addToast(errData.message, "error")
+    }
+  }
+
+  const fetchAdminTasks = async () => {
+    try {
+      const res = await fetch(`${API_URL}/admin/tasks?page_size=50`, {
+        credentials: "include",
+      })
+      if (!res.ok) throw new Error("Failed to fetch all tasks")
+      const data = await res.json()
+      setAdminTasks(data.tasks)
+    }
+    catch (errData) {
+      addToast(errData.message, "error")
+    }
+  }
+
+  const toggleTenant = async (tenantId) => {
+    try {
+      const res = await fetch(`${API_URL}/admin/tenants/${tenantId}/toggle`, {
+        method: "POST",
+        credentials: "include",
+      })
+      if (!res.ok) throw new Error("Failed to toggle tenant")
+      const data = await res.json()
+      addToast(data.message, "info")
+      fetchAdminTenants()
+    }
+    catch (errData) {
+      addToast(errData.message, "error")
+    }
+  }
+
+
+  useEffect(() => {
     if (!loggedIn) return
-    
+
     const wsURL = API_URL.replace("http", "ws") + "/ws/tasks"
     let ws = null
     let reconnectTimer = null
 
     const connectWebSocket = () => {
       if (ws && ws.readyState === WebSocket.OPEN) return // Already connected  
-      
+
       ws = new WebSocket(wsURL)
 
-    // Creates the connection. unlike the fetch calls, this connection will persist and be reused for real-time updates until the user logs out or the connection drops. 
-    ws.onopen = () => {
-      console.log("WebSocket connected")
-    }
+      // Creates the connection. unlike the fetch calls, this connection will persist and be reused for real-time updates until the user logs out or the connection drops. 
+      ws.onopen = () => {
+        console.log("WebSocket connected")
+      }
 
-    // Handle incoming messages - these are sent by the server whenever a task changes status, so we can update the UI in real-time without waiting for the next poll
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data)
-      console.log("WebSocket message received:", data.task_name, data.status)
+      // Handle incoming messages - these are sent by the server whenever a task changes status, so we can update the UI in real-time without waiting for the next poll
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data)
+        console.log("WebSocket message received:", data.task_name, data.status)
 
-      // Update the specific task
-      setTasks(prev => {
-        const updated = prev.map(t => 
-        t.id === data.task_id ? {...t, status: data.status} : t
-      )
-        return updated
-      })
-    }
+        // Update the specific task
+        setTasks(prev => {
+          const updated = prev.map(t =>
+            t.id === data.task_id ? { ...t, status: data.status } : t
+          )
+          return updated
+        })
+      }
 
       // if the connection drops, try to reconnect every 3 seconds. Without this, any dropped connection would require a manual page refresh to get real-time updates again
       ws.onclose = () => {
@@ -477,7 +545,7 @@ function App() {
         ws.close()
       }
     }
-    
+
     connectWebSocket()
 
     // Cleanup on unmount or when loggedIn changes
@@ -490,10 +558,10 @@ function App() {
   useEffect(() => {
     // Calculate stats from tasks
     const newStats = { total: totalTasks, queued: 0, running: 0, completed: 0, failed: 0, retrying: 0, dead: 0 }
-        tasks.forEach(t => {
-          if (newStats[t.status] !== undefined) newStats[t.status]++
-        })
-        setStats(newStats)
+    tasks.forEach(t => {
+      if (newStats[t.status] !== undefined) newStats[t.status]++
+    })
+    setStats(newStats)
   }, [tasks, totalTasks])
 
 
@@ -617,13 +685,14 @@ function App() {
 
       <div className="stats-grid">
         {statCards.map(card => (
-          <div 
-          key={card.label} 
-          className={`stat-card ${statusFilter === card.filterKey ? "stat-card-active" : ""}`}
-          onClick = {() => {setStatusFilter(statusFilter === card.filterKey ? null : card.filterKey)
-            setPage(1)
-          }}
-          style = {{cursor: "pointer"}}
+          <div
+            key={card.label}
+            className={`stat-card ${statusFilter === card.filterKey ? "stat-card-active" : ""}`}
+            onClick={() => {
+              setStatusFilter(statusFilter === card.filterKey ? null : card.filterKey)
+              setPage(1)
+            }}
+            style={{ cursor: "pointer" }}
           >
             <div className="stat-label">{card.label}</div>
             <div className="stat-value" style={{ color: card.color }}>{card.value}</div>
@@ -646,6 +715,14 @@ function App() {
           >
             Dead Letter Queue
           </button>
+          {isAdmin && (
+            <button
+              className={`tab ${activeTab === "admin" ? "tab-active" : ""}`}
+              onClick={() => { setActiveTab("admin"); fetchAdminTenants(); fetchAdminTasks(); fetchAdminStats(); }}
+            >
+              Admin
+            </button>
+          )}
         </div>
 
         {activeTab === "tasks" && (
@@ -672,55 +749,55 @@ function App() {
                   {tasks.length === 0 && (
                     <tr>
                       <td colSpan={7} className="empty-row">
-                        {statusFilter 
-                        ? `No ${statusFilter} tasks found`
-                        : "No tasks yet - submit a task to get started"}
+                        {statusFilter
+                          ? `No ${statusFilter} tasks found`
+                          : "No tasks yet - submit a task to get started"}
                       </td>
                     </tr>
                   )}
                   {tasks
-                  .filter(task => !statusFilter || task.status === statusFilter)
-                  .map(task => (
-                    <tr key={task.id} className="task-row">
-                      <td className="mono">{task.id?.substring(0, 8)}</td>
-                      <td className="task-name">{task.task_name}</td>
-                      <td><StatusBadge status={task.status} /></td>
-                      <td><PriorityBadge priority={task.priority} /></td>
-                      <td className="mono">{task.retry_count}/{task.max_retries}</td>
-                      <td className="time-cell">
-                        {new Date(task.created_at).toLocaleString()}
-                      </td>
-                      <td>
-                        {(task.status === "pending" || task.status === "queued") && (
-                          <button onClick={() => cancelTask(task.id)} className="btn-cancel">Cancel</button>
-                        )}
-                        {(task.status === "failed" || task.status === "dead") && (
-                          <button onClick={() => retryTask(task.id)} className="btn-retry">Retry</button>
-                        )}
-                        {task.status === "completed" && task.task_name === "generate_report" && (
-                          <button onClick={() => downloadReport(task.id)} className="btn-retry">Download</button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                    .filter(task => !statusFilter || task.status === statusFilter)
+                    .map(task => (
+                      <tr key={task.id} className="task-row">
+                        <td className="mono">{task.id?.substring(0, 8)}</td>
+                        <td className="task-name">{task.task_name}</td>
+                        <td><StatusBadge status={task.status} /></td>
+                        <td><PriorityBadge priority={task.priority} /></td>
+                        <td className="mono">{task.retry_count}/{task.max_retries}</td>
+                        <td className="time-cell">
+                          {new Date(task.created_at).toLocaleString()}
+                        </td>
+                        <td>
+                          {(task.status === "pending" || task.status === "queued") && (
+                            <button onClick={() => cancelTask(task.id)} className="btn-cancel">Cancel</button>
+                          )}
+                          {(task.status === "failed" || task.status === "dead") && (
+                            <button onClick={() => retryTask(task.id)} className="btn-retry">Retry</button>
+                          )}
+                          {task.status === "completed" && task.task_name === "generate_report" && (
+                            <button onClick={() => downloadReport(task.id)} className="btn-retry">Download</button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>
             {totalTasks > pageSize && (
-              <div className = "pagination" >
-                <button onClick = {() => setPage(p => Math.max(1, p-1))} disabled={page === 1} className="btn-ghost"
-                  >
+              <div className="pagination" >
+                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="btn-ghost"
+                >
                   ← Previous
                 </button>
-                <span className = "page-info">
+                <span className="page-info">
                   Page {page} of {Math.ceil(totalTasks / pageSize)}
                 </span>
 
-                <button onClick = {() => setPage(p => Math.min(Math.ceil(totalTasks/pageSize), p + 1))}
-                  disabled = {page >= Math.ceil(totalTasks/pageSize)}
-                  className = "btn-ghost">
+                <button onClick={() => setPage(p => Math.min(Math.ceil(totalTasks / pageSize), p + 1))}
+                  disabled={page >= Math.ceil(totalTasks / pageSize)}
+                  className="btn-ghost">
                   Next →
-                  </button>
+                </button>
               </div>
             )}
           </>
@@ -780,6 +857,103 @@ function App() {
             </div>
           </>
         )}
+
+
+        {activeTab == "admin" && isAdmin && (
+          <>
+            {adminStats && (
+              <div className="admin-stats">
+                <div className="stat-card">
+                  <div className="stat-label">Total Tenants</div>
+                  <div className="stat-value">{adminStats.total_tenants}</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-label">Total Tasks</div>
+                  <div className="stat-value">{adminStats.total_tasks}</div>
+                </div>
+              </div>
+            )}
+            <h3 className="section-title" style={{ marginTop: 20 }}>All Tenants</h3>
+            <div className="table-container" style={{ marginBottom: 24 }}>
+              <table className="task-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Status</th>
+                    <th>Tasks</th>
+                    <th>API Keys</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {adminTenants.map(t => (
+                    <tr key={t.id} className="task-row">
+                      <td className="task-name">
+                        {t.name}
+                        {t.is_admin && <span style={{ color: "#fbbf24", marginLeft: 8, fontSize: 11 }}>ADMIN</span>}
+                      </td>
+                      <td>
+                        <span className="status-badge" style={{
+                          color: t.is_active ? "#34d399" : "#f87171",
+                          background: t.is_active ? "#34d39915" : "#f8717115",
+                          border: `1px solid ${t.is_active ? "#34d39933" : "#f8717133"}`,
+                        }}>
+                          {t.is_active ? "ACTIVE" : "INACTIVE"}
+                        </span>
+                      </td>
+                      <td className="mono">{t.task_count}</td>
+                      <td className="mono">{t.api_key_count}</td>
+                      <td className="time-cell">{new Date(t.created_at).toLocaleString()}</td>
+                      <td>
+                        {!t.is_admin && (
+                          <button
+                            onClick={() => toggleTenant(t.id)}
+                            className={t.is_active ? "btn-cancel" : "btn-retry"}
+                          >
+                            {t.is_active ? "Deactivate" : "Activate"}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <h3 className="section-title">All Tasks (System-wide)</h3>
+            <div className="table-container">
+              <table className="task-table">
+                <thead>
+                  <tr>
+                    <th>Task ID</th>
+                    <th>Name</th>
+                    <th>Status</th>
+                    <th>Priority</th>
+                    <th>Tenant</th>
+                    <th>Created</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {adminTasks.map(t => (
+                    <tr key={t.id} className="task-row">
+                      <td className="mono">{t.id.substring(0, 8)}</td>
+                      <td className="task-name">{t.task_name}</td>
+                      <td><StatusBadge status={t.status} /></td>
+                      <td><PriorityBadge priority={t.priority} /></td>
+                      <td className="mono">{t.tenant_id?.substring(0, 8) || "N/A"}</td>
+                      <td className="time-cell">{new Date(t.created_at).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )
+
+        }
+
+
         {/* Submit Modal */}
         {showSubmit && (
           <div className="modal-overlay" onClick={() => setShowSubmit(false)}>
@@ -895,13 +1069,13 @@ function App() {
                 className="input"
               />
 
-              <label className = "field-label">Callback URL (optional)</label>
+              <label className="field-label">Callback URL (optional)</label>
               <input
-                type = "text"
-                placeholder = "https://your-app.com/webhook/task-done"
-                value = {submitForm.callback_url}
-                onChange = {e => setSubmitForm ({ ...submitForm, callback_url: e.target.value})}
-                className = "input"
+                type="text"
+                placeholder="https://your-app.com/webhook/task-done"
+                value={submitForm.callback_url}
+                onChange={e => setSubmitForm({ ...submitForm, callback_url: e.target.value })}
+                className="input"
               />
 
               <div className="modal-actions">
@@ -915,13 +1089,13 @@ function App() {
         )}
       </main>
       {/* Toast Notifications */}
-      <div className = "toast-container">
+      <div className="toast-container">
         {toasts.map(toast => (
-          <div key = {toast.id} className = {`toast toast-${toast.type}`} >
+          <div key={toast.id} className={`toast toast-${toast.type}`} >
             <span>{toast.message}</span>
             <button
-            onClick = {() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
-            className = "toast-close"
+              onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
+              className="toast-close"
             >
               ✕
             </button>

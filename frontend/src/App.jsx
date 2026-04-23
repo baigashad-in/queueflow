@@ -211,6 +211,7 @@ function App() {
     const interval = setInterval(() => {
       fetchTasks()
       if (activeTab === "dlq") fetchDlq()
+      if (isAdmin) fetchAdminStats() // Refresh admin stats on the same interval to keep them up to date
     }, 5000)
 
     return () => clearInterval(interval)
@@ -556,13 +557,28 @@ function App() {
   }, [loggedIn])
 
   useEffect(() => {
-    // Calculate stats from tasks
+    if(isAdmin){
+      // For admin users, calculate stats from the full list of tasks across all tenants
+      const breakdown = adminStats.status_breakdown || {}
+      setStats({
+        total: adminStats.total_tasks || 0,
+        queued: breakdown.queued || 0,
+        running: breakdown.running || 0,
+        completed: breakdown.completed || 0,
+        failed: breakdown.failed || 0,
+        retrying: breakdown.retrying || 0,
+        dead: breakdown.dead || 0,
+      })
+    }
+    
+    else {
+    // Calculate stats from tasks fetched for the logged-in tenant
     const newStats = { total: totalTasks, queued: 0, running: 0, completed: 0, failed: 0, retrying: 0, dead: 0 }
     tasks.forEach(t => {
       if (newStats[t.status] !== undefined) newStats[t.status]++
     })
-    setStats(newStats)
-  }, [tasks, totalTasks])
+    setStats(newStats)}
+  }, [tasks, totalTasks, isAdmin, adminStats])
 
 
   // If no API key, show login screen

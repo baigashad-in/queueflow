@@ -559,16 +559,18 @@ function App() {
   useEffect(() => {
     if(isAdmin){
       // For admin users, calculate stats from the full list of tasks across all tenants
-      const breakdown = adminStats.status_breakdown || {}
-      setStats({
-        total: adminStats.total_tasks || 0,
-        queued: breakdown.queued || 0,
-        running: breakdown.running || 0,
-        completed: breakdown.completed || 0,
-        failed: breakdown.failed || 0,
-        retrying: breakdown.retrying || 0,
-        dead: breakdown.dead || 0,
-      })
+      if (adminStats) {
+        const breakdown = adminStats.status_breakdown || {}
+        setStats({
+          total: adminStats.total_tasks || 0,
+          queued: breakdown.queued || 0,
+          running: breakdown.running || 0,
+          completed: breakdown.completed || 0,
+          failed: breakdown.failed || 0,
+          retrying: breakdown.retrying || 0,
+          dead: breakdown.dead || 0,
+        })
+      }
     }
     
     else {

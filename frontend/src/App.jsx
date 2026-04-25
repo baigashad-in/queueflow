@@ -560,7 +560,7 @@ function App() {
     if(isAdmin){
       // For admin users, calculate stats from the full list of tasks across all tenants
       if (adminStats) {
-        const breakdown = adminStats.status_breakdown || {}
+        const breakdown = adminStats.tasks_by_status  || {}
         setStats({
           total: adminStats.total_tasks || 0,
           queued: breakdown.queued || 0,

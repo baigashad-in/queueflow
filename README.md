@@ -1,6 +1,10 @@
 # QueueFlow
 
-A distributed task queue and job orchestration platform built from scratch with Python, FastAPI, Redis, and PostgreSQL
+A distributed task queue and job orchestration platform built from scratch with Python, FastAPI, Redis, and PostgreSQL.
+
+**Live Demo:** https://queueflow.swedencentral.cloudapp.azure.com/dashboard/
+**API Docs:** https://queueflow.swedencentral.cloudapp.azure.com/docs
+**PyPI:** https://pypi.org/project/queueflow-sdk/
 
 ## Architecture
 ```
@@ -53,6 +57,13 @@ A distributed task queue and job orchestration platform built from scratch with 
 13. **Request ID Tracking** — Unique ID on every request for debugging and tracing
 14. **Observability** — Prometheus metrics (queue depth, task duration, DLQ depth) + Grafana dashboards
 15. **CI Pipeline** — GitHub Actions with Postgres and Redis services, automated test suite
+16. **React Dashboard** — Tenant creation, task submission with custom payloads, status filters, pagination, toast notifications, and DLQ management
+17. **HTTP-only Cookie Auth** — Secure browser authentication alongside API key header auth for programmatic access
+18. **HTTPS** — SSL via Let's Encrypt with Nginx reverse proxy, secure cookies, and WebSocket over WSS
+19. **Webhook Callbacks** — Optional callback_url on task submission, server POSTs result on completion or death
+20. **Admin Panel** — System-wide stats, tenant management, activate/deactivate tenants
+21. **Python SDK** — Published on PyPI (pip install queueflow-sdk) with typed exceptions, context manager, and wait_for polling
+22. **Deployed on Azure** — VM with Docker Compose, Nginx, Let's Encrypt SSL, and DNS
 
 ## Tech Stack
 
@@ -62,6 +73,9 @@ A distributed task queue and job orchestration platform built from scratch with 
 4. Docker Compose for local dev(Redis + Postgres + workers + dashboard all wired up)
 5. Prometheus + Grafana (run in Docker Compose)
 6. pytest with significant test coverage including failure scenario tests
+7. React + Vite (dashboard frontend)
+8. Nginx (reverse proxy, SSL termination)
+9. Let's Encrypt (SSL certificates)
 
 ## Getting Started
 
@@ -100,14 +114,22 @@ http://localhost:8000/docs
 Click Authorize in the top right and enter your API key. Users need to create a tenant and API key first via POST /tenants/ and POST /tenants/{id}/api-keys.
 
 
-### Access
+### Local Development
 
 | Service | URL |
 |----------|----------------------------|
 | API docs | http://localhost:8000/docs |
+| Dashboard | http://localhost:5173 |
 | Prometheus | http://localhost:9090 |
 | Grafana | http://localhost:3000 |
-| Worker metrics | http://localhost:8001/metrics |
+
+### Production (Azure)
+
+| Service | URL |
+|----------|------|
+| Dashboard | https://queueflow.swedencentral.cloudapp.azure.com/dashboard/ |
+| API docs | https://queueflow.swedencentral.cloudapp.azure.com/docs |
+| Grafana | https://queueflow.swedencentral.cloudapp.azure.com:3000 |
 
 ---
 
@@ -124,7 +146,7 @@ All endpoints require the `X-API-Key` header.
 Request:
 ```
 curl -X POST http://localhost:8000/tasks/ \
-  -H "X-API-Key: dev-secret-key" \
+  -H "X-API-Key: YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "task_name": "send_email",
@@ -171,7 +193,7 @@ Optional query parameters:
 Request:
 ```
 curl http://localhost:8000/tasks/?status=completed&page=1&page_size=10 \
-  -H "X-API-Key: dev-secret-key"
+  -H "X-API-Key: YOUR_API_KEY"
 ```
 
 ```
@@ -193,7 +215,7 @@ Response (200 OK):
 Request:
 ```
 curl http://localhost:8000/tasks/dd4baba6-9447-4ae2-93ea-05c94051aa95 \
-  -H "X-API-Key: dev-secret-key"
+  -H "X-API-Key: YOUR_API_KEY"
 ```
 
 ```
@@ -270,11 +292,42 @@ it without touching existing logic. This kind of pragmatic decision-making, choo
 right tool for the actual requirement rather than the most sophisticated option, is
 something I developed a much stronger instinct for over the course of this project.
 
-If I were to extend this further, I would refactor the Redis client to be
-injectable so that all Redis-dependent features can be tested in the CI
-pipeline, add a service layer to separate business logic from route handlers,
-and implement task DAGs for defining dependencies between tasks.
+If I were to extend this further, I would make the Redis client fully
+injectable for unit testing without a live Redis instance, add task DAGs
+for defining dependencies between tasks, implement a reaper job to recover
+orphaned running tasks after worker crashes, and add Alembic for versioned
+database migrations.
 
+## SDK
+
+Install the Python SDK:
+
+```bash
+pip install queueflow-sdk
+```
+
+Quick start:
+
+```python
+from queueflow_sdk import QueueFlowClient
+
+# Create a tenant and get an API key
+tenant = QueueFlowClient.create_tenant("https://your-server.com", "My Company")
+key = QueueFlowClient.create_api_key("https://your-server.com", tenant.id)
+
+# Initialize the client
+qf = QueueFlowClient("https://your-server.com", key.key)
+
+# Submit a task and wait for completion
+task = qf.submit("send_email", payload={"to": "user@example.com", "subject": "Hello"})
+result = qf.wait_for(task.id)
+print(result.status)  # "completed"
+
+# Clean up
+qf.close()
+```
+
+PyPI: https://pypi.org/project/queueflow-sdk/
 
 
 ## License

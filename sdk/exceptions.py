@@ -8,6 +8,7 @@ class QueueFlowError(Exception):
 
 class AuthenticationError(QueueFlowError):
     """Raised when API key is invalid or missing."""
+    pass
 
 class NotFoundError(QueueFlowError):
     """Raised when a resource is not found."""

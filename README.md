@@ -274,3 +274,8 @@ If I were to extend this further, I would refactor the Redis client to be
 injectable so that all Redis-dependent features can be tested in the CI
 pipeline, add a service layer to separate business logic from route handlers,
 and implement task DAGs for defining dependencies between tasks.
+
+
+
+## License
+This project is licensed under the MIT License.

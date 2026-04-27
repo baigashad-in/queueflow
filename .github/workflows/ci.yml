@@ -37,7 +37,7 @@ jobs:
           --health-retries 5
     
     env:
-      POSTGRES_USER: queueflow_db
+      POSTGRES_USER: queueflow_db_test
       POSTGRES_PASSWORD: testpassword
       POSTGRES_DB: queueflow_db
       POSTGRES_HOST: localhost
@@ -60,7 +60,4 @@ jobs:
       - name: Run tests
         run: pytest tests/ -v
 
-    
-
         
-

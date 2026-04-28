@@ -90,7 +90,7 @@ async def test_missing_api_key(test_session, test_tenant, engine):
         })
 
     app.dependency_overrides.clear()
-    assert response.status_code == 422 # FastAPI returns 422 for missing required headers
+    assert response.status_code == 401 # Missing API key returns Unauthorized
 
 async def test_wrong_api_key(test_session, test_tenant, engine):
     """Requests with invalid API key should be rejected."""
@@ -153,6 +153,11 @@ async def test_cancel_invalid_task_id(test_session, test_tenant, engine):
 
     # Attempt to cancel a task with an invalid ID
     async with AsyncClient(transport = transport, base_url = "http://test") as client:
+        response = await client.post("/tasks/invalid-id/cancel")
+
+    async with AsyncClient(transport = transport, 
+                           base_url = "http://test",
+                           headers = {"X-API-Key": "test-key"}) as client:
         response = await client.post("/tasks/invalid-id/cancel")
 
     app.dependency_overrides.clear()

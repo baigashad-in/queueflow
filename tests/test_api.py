@@ -154,7 +154,7 @@ async def test_cancel_invalid_task_id(test_session, test_tenant, engine):
     # Attempt to cancel a task with an invalid ID
     async with AsyncClient(transport = transport, 
                            base_url = "http://test",
-                           headers = {"X-API-Key": "api_key"}) as client:
+                           headers = {"X-API-Key": test_tenant["api_key"].key}) as client:
         response = await client.post("/tasks/invalid-id/cancel")
 
     app.dependency_overrides.clear()

@@ -14,7 +14,7 @@ worker_id = str(uuid.uuid4())[:8]  # Short unique ID for this worker instance
 async def send_heartbeat(worker_id: str):
     """Send a single heartbeat update to Redis."""
     try:
-        await redis_client.setex(f"{HEARTBEAT_PREFIX}{worker_id}", ex=30, value=str(time.time()))
+        await redis_client.setex(f"{HEARTBEAT_PREFIX}{worker_id}", 30, str(time.time()))
     except Exception as e:
         logger.error(f"Failed to send heartbeat for worker {worker_id}: {e}")
 

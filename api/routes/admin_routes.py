@@ -141,7 +141,6 @@ async def toggle_tenant(
     result = await session.execute(select(Tenant).where(Tenant.id == tid))
     tenant = result.scalar_one_or_none()
     if not tenant:
-        from fastapi import HTTPException
         raise HTTPException(status_code = 404, detail = "Tenant not found")
     
     tenant.is_active = not tenant.is_active

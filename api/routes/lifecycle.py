@@ -123,15 +123,17 @@ async def retry_all_dlq_tasks(
     tenant: Tenant = Depends(get_current_tenant),
 ):
     """Retry all tasks currently in the Dead Letter Queue (DLQ). Returns the number of tasks that were retried."""
+    task_ids = await get_dlq_contents()
     replayed = 0
     failed = 0
 
-    while True:
-        task_id = await pop_from_dlq()
-        if task_id is None:
-            break  # No more tasks in DLQ
+    # while True:
+    #     task_id = await pop_from_dlq()
+    #     if task_id is None:
+    #         break  # No more tasks in DLQ
         
 
+    for task_id in task_ids:
         task = await get_by_id(session, task_id)
         if not task:
             failed += 1
@@ -140,9 +142,11 @@ async def retry_all_dlq_tasks(
         # Only retry tasks that belong to the current tenant
         if task.tenant_id != tenant.id:
             # Push it back - it belongs to another tenant, we shouldn't be retrying it
-            await push_to_dlq(task.id)
+            # await push_to_dlq(str(task.id))
+            # Leave it in the DLQ for its rightful tenant
             continue
 
+        await remove_from_dlq(task_id)
         # Reset and re-enqueue (same as single retry)
         await reset_task_for_retry(task)
         await session.commit()

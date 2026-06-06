@@ -7,6 +7,7 @@ from core.database import Base, get_session
 from core.db_models import Tenant, ApiKey
 from core.config import settings
 from api.main import app
+import fakeredis.aioredis
 
 TEST_DATABASE_URL = settings.database_url
 
@@ -70,3 +71,39 @@ async def client(test_session, test_tenant):
 
     # Clear dependency overrides after the test finishes to avoid affecting other tests
     app.dependency_overrides.clear()
+
+@pytest.fixture
+async def fake_redis(monkeypatch):
+    """
+    Replace the real Redis client with an in-memory fake for the duration of one test.
+ 
+    This monkeypatches `core.queue.redis_client` so that everything that imports
+    redis_client from there (core.lock, core.dlq, core.scheduler, core.events,
+    worker.heartbeat) transparently uses the fake.
+ 
+    Each test gets a fresh fake — no state leaks between tests.
+    """
+    fake = fakeredis.aioredis.FakeRedis(decode_responses=True)
+ 
+    # Patch every module that imports redis_client.
+    # We have to patch each binding because Python imports copy references.
+    import core.queue
+    import core.lock
+    import core.dlq
+    import core.scheduler
+    import core.events
+    import worker.heartbeat
+    import core.rate_limiter
+ 
+    monkeypatch.setattr(core.queue, "redis_client", fake)
+    monkeypatch.setattr(core.lock, "redis_client", fake)
+    monkeypatch.setattr(core.dlq, "redis_client", fake)
+    monkeypatch.setattr(core.scheduler, "redis_client", fake)
+    monkeypatch.setattr(core.events, "redis_client", fake)
+    monkeypatch.setattr(worker.heartbeat, "redis_client", fake)
+    monkeypatch.setattr(core.rate_limiter, "redis_client", fake)
+ 
+    yield fake
+ 
+    await fake.flushall()
+    await fake.aclose()

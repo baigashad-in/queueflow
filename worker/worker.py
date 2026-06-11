@@ -140,22 +140,42 @@ async def update_idle_metrics():
     current_dlq_depth = await get_dlq_depth()
     dlq_depth.set(current_dlq_depth)
     return depths, current_dlq_depth
-async def poll_loop():
-    """Main worker loop - polls REdis and processes tasks."""
+async def poll_loop(
+        *,
+        metrics_server_starter = None,
+        install_signal_handlers = True,
+        shutdown_event = None,
+):
+    """Main worker loop - polls Redis and processes tasks.
+    
+    Args:
+        metrics_server_starter: callable to start the metrics HTTP server.
+            Default: start_http_server(8001). Tests inject a no-op.
+        install_signal_handlers: register SIGTERM/SIGINT handlers.
+            Default: True. Tests disable this to avoid threading issues.
+        shutdown_event: an asyncio. Event used to stop the loop.
+            Default: a fresh event wired to the signal handlers. Tests pass their own
+            and set() it to stop the loop.
+    """
     logger.info("PyQueue Worker starting up...")
     logger.info(f"Worker concurrency: {settings.worker_concurrency}")
 
     semaphore = asyncio.Semaphore(settings.worker_concurrency)
 
-    # Start metrics server on the port 8001
-    start_http_server(8001)
-    logger.info("Worker metrics server started on port 8001")
+    # Start metrics server (injectable for tests)
+    if metrics_server_starter is None:
+        start_http_server(8001)
+        logger.info("Worker metrics server started on port 8001")
+    else:
+        metrics_server_starter()
+    
+    if shutdown_event is None:
+        shutdown_event = asyncio.Event()
 
-    shutdown_event = asyncio.Event()
-
-    loop = asyncio.get_running_loop()
-    loop.add_signal_handler(signal.SIGTERM, shutdown_event.set)
-    loop.add_signal_handler(signal.SIGINT, shutdown_event.set)
+    if install_signal_handlers:
+        loop = asyncio.get_running_loop()
+        loop.add_signal_handler(signal.SIGTERM, shutdown_event.set)
+        loop.add_signal_handler(signal.SIGINT, shutdown_event.set)
 
     active_tasks = set()
 
@@ -167,7 +187,11 @@ async def poll_loop():
             if not task_id:
                 depths, current_dlq_depth = await update_idle_metrics()
                 logger.info(f"No tasks found. Queue depths: {depths}")
-                await asyncio.sleep(5)
+                # Use wait_for so we exit promptly when shutdown_event fires
+                try:
+                    await asyncio.wait_for(shutdown_event.wait(), timeout = 5)
+                except asyncio.TimeoutError:
+                    pass
                 continue
             else:
                 # create_task — starts it in the background and immediately continues. Runs right away, doesn't wait for the task to finish
@@ -177,11 +201,14 @@ async def poll_loop():
 
         except Exception as e:
             logger.error(f"Worker poll error: {e}")
-            await asyncio.sleep(5)
+            try:
+                await asyncio.wait_for(shutdown_event.wait(), timeout = 5)
+            except asyncio.TimeoutError:
+                pass
 
     logger.info(f"Shutting down - waiting for {len(active_tasks)} tasks to finish...")
     if active_tasks:
-        await asyncio.gather(*active_tasks)
+        await asyncio.gather(*active_tasks, return_exceptions = True)
     logger.info("All tasks completed. Worker shutdown cleanly.")
     
 async def fire_webhook(task: TaskRecord) -> None:
@@ -207,7 +234,7 @@ async def fire_webhook(task: TaskRecord) -> None:
         logger.error(f"Webhook failed for task {task.id} to {task.callback_url}: {e}")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__": # pragma: no cover
     async def main():
         worker_id = str(uuid.uuid4())[:8]
         logger.info(f"Worker {worker_id} starting...")

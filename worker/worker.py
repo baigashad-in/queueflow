@@ -236,7 +236,7 @@ async def fire_webhook(task: TaskRecord) -> None:
 
 if __name__ == "__main__": # pragma: no cover
     async def main():
-        worker_id = str(uuid.uuid4())[:8]
+        worker_id = str(uuid.uuid4())[:8] # Short unique ID for this worker instance
         logger.info(f"Worker {worker_id} starting...")
         """Run the poll loop, scheduler loop and heatbeat loop concurrently."""
         await asyncio.gather(

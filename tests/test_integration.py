@@ -59,130 +59,111 @@ def _make_event_generator(events):
 # WebSocket integration tests
 # ════════════════════════════════════════════════════════════════════
 
+"""
+WebSocket integration tests for /ws/tasks.
+
+Tests cookie-based auth, connection lifecycle, and tenant-scoped event
+filtering. The `ws_test_client` fixture bypasses the route's DB lookup
+(get_tenant_from_cookie) via monkeypatch — necessary because TestClient
+runs in a separate thread/loop while the production async engine is
+bound to the main test loop, causing asyncpg cross-loop errors.
+
+Database state isn't needed: the auth helper is replaced with an
+in-memory cookie→tenant map populated by client.register_session().
+"""
+import asyncio
+import uuid
+import pytest
+from unittest.mock import patch
+from starlette.websockets import WebSocketDisconnect
+
+
+def _make_event_generator(events):
+    """Build an async generator function that yields the given events."""
+    async def _gen():
+        for event in events:
+            yield event
+            await asyncio.sleep(0.01)
+    return _gen
+
+
 class TestWebSocketIntegration:
-    """Tests the WebSocket route end-to-end: handshake, auth, event filtering.
+    """End-to-end tests for the /ws/tasks WebSocket route."""
 
-    Uses Starlette's TestClient which provides a sync WebSocket client.
-    We mock `subscribe_to_events` to yield a controlled event sequence so
-    the tests don't depend on Redis Pub/Sub timing.
-    """
+    def test_websocket_rejects_connection_without_cookie(self, ws_test_client):
+        """No qf_session cookie → server closes the connection with code 4001."""
+        with pytest.raises(WebSocketDisconnect) as exc:
+            with ws_test_client.websocket_connect("/ws/tasks") as ws:
+                ws.receive_text()
+        assert exc.value.code == 4001
 
-    async def test_websocket_rejects_connection_without_cookie(self, test_session):
-        """No cookie → close with code 4001 Unauthorized."""
+    def test_websocket_rejects_invalid_cookie(self, ws_test_client):
+        """Cookie set but doesn't match any registered session → 4001."""
+        ws_test_client.cookies.set("qf_session", "not-a-real-key")
+        with pytest.raises(WebSocketDisconnect) as exc:
+            with ws_test_client.websocket_connect("/ws/tasks") as ws:
+                ws.receive_text()
+        assert exc.value.code == 4001
+
+    def test_websocket_rejects_inactive_tenant(self, ws_test_client):
+        """Valid cookie but the tenant is inactive → 4001."""
+        tenant_id = uuid.uuid4()
+        ws_test_client.register_session("inactive-key", tenant_id, is_active=False)
+        ws_test_client.cookies.set("qf_session", "inactive-key")
+        with pytest.raises(WebSocketDisconnect) as exc:
+            with ws_test_client.websocket_connect("/ws/tasks") as ws:
+                ws.receive_text()
+        assert exc.value.code == 4001
+
+    def test_websocket_accepts_valid_cookie_and_forwards_event(self, ws_test_client):
+        """Authenticated client receives events tagged with its tenant_id."""
+        tenant_id = uuid.uuid4()
+        tenant_id_str = str(tenant_id)
+        ws_test_client.register_session("valid-key", tenant_id)
+
+        events = [{
+            "task_id": "task-1",
+            "task_name": "send_email",
+            "status": "completed",
+            "tenant_id": tenant_id_str,
+            "priority": 5,
+        }]
+
         import api.routes.ws as ws_module
+        with patch.object(ws_module, "subscribe_to_events", _make_event_generator(events)):
+            ws_test_client.cookies.set("qf_session", "valid-key")
+            with ws_test_client.websocket_connect("/ws/tasks") as ws:
+                received = ws.receive_json()
+                assert received["task_id"] == "task-1"
+                assert received["tenant_id"] == tenant_id_str
 
-        # Override the route's get_session import to use our test session
-        async def override_get_session():
-            yield test_session
+    def test_websocket_filters_events_from_other_tenants(self, ws_test_client):
+        """Security-critical: events for a different tenant must NOT be forwarded.
 
-        with patch.object(ws_module, "get_session", override_get_session):
-            with TestClient(app) as client:
-                with pytest.raises(WebSocketDisconnect) as exc_info:
-                    with client.websocket_connect("/ws/tasks") as ws:
-                        # Connection should be closed by the server before we can do anything
-                        ws.receive_text()
-                assert exc_info.value.code == 4001
-
-    async def test_websocket_rejects_invalid_cookie(self, test_session):
-        """Cookie set but doesn't match any API key → 4001."""
-        import api.routes.ws as ws_module
-
-        async def override_get_session():
-            yield test_session
-
-        with patch.object(ws_module, "get_session", override_get_session):
-            with TestClient(app) as client:
-                client.cookies.set("qf_session", "totally-not-a-real-key")
-                with pytest.raises(WebSocketDisconnect) as exc_info:
-                    with client.websocket_connect("/ws/tasks") as ws:
-                        ws.receive_text()
-                assert exc_info.value.code == 4001
-
-    async def test_websocket_accepts_valid_cookie_and_forwards_event(self, test_session):
-        """Valid cookie + matching tenant_id in event → event is forwarded to client."""
-        import api.routes.ws as ws_module
-
-        tenant = await _make_tenant_with_key(test_session, key="ws-key-1")
-        tenant_id_str = str(tenant.id)
-
-        async def override_get_session():
-            yield test_session
-
-        events_to_yield = [
-            {"task_id": "task-1", "task_name": "send_email", "status": "completed",
-             "tenant_id": tenant_id_str, "priority": 5},
-        ]
-
-        with patch.object(ws_module, "get_session", override_get_session), \
-             patch.object(ws_module, "subscribe_to_events", _make_event_generator(events_to_yield)):
-            with TestClient(app) as client:
-                client.cookies.set("qf_session", "ws-key-1")
-                with client.websocket_connect("/ws/tasks") as ws:
-                    received = ws.receive_json()
-                    assert received["task_id"] == "task-1"
-                    assert received["tenant_id"] == tenant_id_str
-
-    async def test_websocket_filters_events_from_other_tenants(self, test_session):
-        """An event for another tenant should NOT be forwarded.
-
-        This is the security-critical test: it verifies the tenant isolation
-        on the WebSocket route. A bug here would leak task data across tenants.
+        Tenant A connects; the event stream contains one event for tenant B
+        (must be filtered out) followed by one for A (must arrive).
         """
-        import api.routes.ws as ws_module
+        tenant_a_id = uuid.uuid4()
+        tenant_b_id = uuid.uuid4()
+        a_id_str = str(tenant_a_id)
+        b_id_str = str(tenant_b_id)
 
-        tenant_a = await _make_tenant_with_key(test_session, key="ws-key-a")
-        tenant_b = await _make_tenant_with_key(test_session, key="ws-key-b")
-        tenant_a_id = str(tenant_a.id)
-        tenant_b_id = str(tenant_b.id)
+        ws_test_client.register_session("key-a", tenant_a_id)
 
-        async def override_get_session():
-            yield test_session
-
-        # Send three events: one for tenant_b (should NOT arrive), then one for
-        # tenant_a (SHOULD arrive), then another for tenant_b (should NOT arrive)
-        events_to_yield = [
-            {"task_id": "task-for-b", "task_name": "x", "status": "completed",
-             "tenant_id": tenant_b_id, "priority": 5},
-            {"task_id": "task-for-a", "task_name": "y", "status": "completed",
-             "tenant_id": tenant_a_id, "priority": 5},
-            {"task_id": "task-for-b-2", "task_name": "z", "status": "failed",
-             "tenant_id": tenant_b_id, "priority": 5},
+        events = [
+            {"task_id": "for-b", "task_name": "x", "status": "completed",
+             "tenant_id": b_id_str, "priority": 5},
+            {"task_id": "for-a", "task_name": "y", "status": "completed",
+             "tenant_id": a_id_str, "priority": 5},
         ]
 
-        with patch.object(ws_module, "get_session", override_get_session), \
-             patch.object(ws_module, "subscribe_to_events", _make_event_generator(events_to_yield)):
-            with TestClient(app) as client:
-                client.cookies.set("qf_session", "ws-key-a")
-                with client.websocket_connect("/ws/tasks") as ws:
-                    # The only event tenant_a should see is task-for-a.
-                    # If the filtering is broken, we'll receive task-for-b first instead.
-                    received = ws.receive_json()
-                    assert received["task_id"] == "task-for-a"
-                    assert received["tenant_id"] == tenant_a_id
-
-    async def test_websocket_rejects_inactive_tenant(self, test_session):
-        """A valid key for a deactivated tenant should be rejected."""
         import api.routes.ws as ws_module
-
-        tenant = Tenant(name=f"InactiveWS-{uuid.uuid4().hex[:8]}", is_active=False)
-        test_session.add(tenant)
-        await test_session.commit()
-        await test_session.refresh(tenant)
-
-        api_key = ApiKey(tenant_id=tenant.id, key="inactive-key", is_active=True)
-        test_session.add(api_key)
-        await test_session.commit()
-
-        async def override_get_session():
-            yield test_session
-
-        with patch.object(ws_module, "get_session", override_get_session):
-            with TestClient(app) as client:
-                client.cookies.set("qf_session", "inactive-key")
-                with pytest.raises(WebSocketDisconnect) as exc_info:
-                    with client.websocket_connect("/ws/tasks") as ws:
-                        ws.receive_text()
-                assert exc_info.value.code == 4001
+        with patch.object(ws_module, "subscribe_to_events", _make_event_generator(events)):
+            ws_test_client.cookies.set("qf_session", "key-a")
+            with ws_test_client.websocket_connect("/ws/tasks") as ws:
+                received = ws.receive_json()
+                assert received["task_id"] == "for-a"
+                assert received["tenant_id"] == a_id_str
 
 
 # ════════════════════════════════════════════════════════════════════

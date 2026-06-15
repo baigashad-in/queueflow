@@ -34,9 +34,15 @@ async def lifespan(app: FastAPI):
     logger.info("PyQueue API starting up...")
     logger.info(f"Environment: {settings.app_env}")
 
-    # Create database tables on startup
-    await init_db() # Initialize database tables on startup
-    logger.info("Database tables ready")
+    # Skip database init during tests — the test engine fixture handles
+    # table creation, and re-running init_db() under TestClient's event
+    # loop causes asyncpg cross-loop errors.
+    if settings.app_env != "testing":
+        # Create database tables on startup (when not testing)
+        await init_db() # Initialize database tables on startup (when not testing)
+        logger.info("Database tables ready")
+    else:
+        logger.info("Skipping init_db() — running under tests")
     
     yield
 

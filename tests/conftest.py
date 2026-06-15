@@ -2,6 +2,8 @@ import pytest
 
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, Session as SyncSession
 
 from core.database import Base, get_session
 from core.db_models import Tenant, ApiKey
@@ -107,3 +109,71 @@ async def fake_redis(monkeypatch):
  
     await fake.flushall()
     await fake.aclose()
+
+
+@pytest.fixture
+def test_session_sync(engine):
+    """Synchronous DB session for use with starlette's TestClient.
+
+    TestClient runs in a separate thread with its own event loop, so async
+    sessions from the same engine can't be shared across the boundary.
+    This fixture provides a sync session bound to the test database, useful
+    for WebSocket tests that need to seed data before connecting.
+    """
+    # Derive a sync URL from the async one (replace +asyncpg with +psycopg2 or plain)
+    from core.config import settings
+    sync_url = settings.database_url.replace("+asyncpg", "")
+    sync_engine = create_engine(sync_url)
+    SyncSessionLocal = sessionmaker(bind=sync_engine, expire_on_commit=False)
+    session = SyncSessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
+        sync_engine.dispose()
+
+
+@pytest.fixture
+def ws_test_client(monkeypatch):
+    """TestClient that bypasses the WebSocket route's DB auth lookup entirely.
+
+    Instead of patching get_session (which doesn't work because the async
+    engine's connection pool is tied to the main test loop, while
+    TestClient runs in its own thread/loop), we patch the
+    `get_tenant_from_cookie` helper directly. Tests register a cookie→tenant
+    mapping via the `register_session` method on the returned client.
+    """
+    monkeypatch.setenv("APP_ENV", "testing")
+    from core.config import settings
+    monkeypatch.setattr(settings, "app_env", "testing", raising=False)
+
+    # In-memory cookie→tenant mapping populated by tests
+    cookie_tenants = {}
+
+    # Build a fake tenant class to mimic what the real route expects
+    class FakeTenant:
+        def __init__(self, tenant_id, is_active=True):
+            self.id = tenant_id
+            self.is_active = is_active
+
+    async def fake_get_tenant_from_cookie(websocket):
+        cookie = websocket.cookies.get("qf_session")
+        if not cookie or cookie not in cookie_tenants:
+            return None
+        entry = cookie_tenants[cookie]
+        if not entry["is_active"]:
+            return None
+        return FakeTenant(entry["tenant_id"], is_active=True)
+
+    import api.routes.ws as ws_module
+    monkeypatch.setattr(ws_module, "get_tenant_from_cookie", fake_get_tenant_from_cookie)
+
+    from fastapi.testclient import TestClient
+    from api.main import app
+
+    with TestClient(app) as client:
+        # Attach helpers so tests can register sessions
+        client.register_session = lambda cookie, tenant_id, is_active=True: (
+            cookie_tenants.update({cookie: {"tenant_id": tenant_id, "is_active": is_active}})
+        )
+        yield client

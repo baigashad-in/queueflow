@@ -3,7 +3,7 @@ from sqlalchemy.orm import DeclarativeBase
 
 from typing import AsyncGenerator
 from core.config import settings
-
+from fastapi import Request
 
 def build_engine() -> AsyncEngine:
     """Create a fresh async engine.
@@ -44,3 +44,13 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         yield session
 
+async def get_api_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
+    """FastAPI dependency that yields a session from the lifespan-scoped engine.
+
+    Reads the SessionLocal factory off request.app.state — which was populated
+    during the API's lifespan startup. This makes the API's DB access independent
+    of any module-level engine.
+    """
+    SessionLocal = request.app.state.SessionLocal
+    async with SessionLocal() as session:
+        yield session

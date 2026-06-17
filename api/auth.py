@@ -1,14 +1,14 @@
 from fastapi import Depends, HTTPException, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from core.database import get_session
+from core.database import get_api_session
 from core.db_models import Tenant, ApiKey
 from typing import Optional
 
 async def get_current_tenant(
         request: Request,
         api_key: Optional[str] = Header(None, alias = "X-API-Key"),
-        session: AsyncSession = Depends(get_session),
+        session: AsyncSession = Depends(get_api_session),
 ) -> Tenant:
     """Get Tenant from API key header or Session cookie."""
 

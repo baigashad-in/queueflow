@@ -6,7 +6,6 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 
 from core.events import subscribe_to_events
-from core.database import get_session
 from core.db_models import ApiKey, Tenant
 
 router = APIRouter(prefix = "/ws", tags = ["WebSocket"])
@@ -18,7 +17,8 @@ async def get_tenant_from_cookie(websocket: WebSocket):
     if not cookie:
         return None
     
-    async for session in get_session():
+    SessionLocal = websocket.app.state.SessionLocal
+    async with SessionLocal() as session:
         result = await session.execute(
             select(ApiKey).where(ApiKey.key == cookie, ApiKey.is_active == True)
         )

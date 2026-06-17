@@ -2,7 +2,7 @@
 import uuid
 import logging
 
-from core.database import get_session
+from core.database import get_api_session
 from core.db_models import TaskRecord, Tenant
 from core.models import TaskStatus
 from core.dlq import get_dlq_contents, push_to_dlq, remove_from_dlq, purge_dlq, pop_from_dlq
@@ -31,7 +31,7 @@ async def get_task_or_404(task_id: str, session: AsyncSession) -> TaskRecord:
 @router.post("/tasks/{task_id}/cancel", response_model = TaskResponse, status_code=200)
 async def cancel_task(
     task_id: str, 
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_api_session),
     tenant: Tenant = Depends(get_current_tenant),
     ):
     """
@@ -59,7 +59,7 @@ async def cancel_task(
 @router.post("/tasks/{task_id}/retry", response_model = TaskResponse)
 async def retry_task(
     task_id: str, 
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_api_session),
     tenant: Tenant = Depends(get_current_tenant)
 ):
     """
@@ -93,7 +93,7 @@ async def retry_task(
 
 @router.get("/dlq", response_model = list[TaskResponse]  )
 async def view_dlq( 
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_api_session),
     tenant: Tenant = Depends(get_current_tenant)
     ):
     """View the contents of the Dead Letter Queue (DLQ). Returns a list of task IDs currently in the DLQ."""
@@ -119,7 +119,7 @@ async def view_dlq(
 
 @router.post("/dlq/retry-all")
 async def retry_all_dlq_tasks(
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_api_session),
     tenant: Tenant = Depends(get_current_tenant),
 ):
     """Retry all tasks currently in the Dead Letter Queue (DLQ). Returns the number of tasks that were retried."""
@@ -164,7 +164,7 @@ async def retry_all_dlq_tasks(
 
 @router.post("/dlq/purge", status_code = 200)
 async def purge_dead_letter_queue(
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_api_session),
     tenant: Tenant = Depends(get_current_tenant)
 ):
     """Permanently remove all tasks from the Dead Letter Queue (DLQ) of the current tenant. Returns the number of tasks that were removed."""

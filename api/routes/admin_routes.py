@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
-from core.database import get_session
+from core.database import get_api_session
 from core.db_models import Tenant, TaskRecord, ApiKey
 
 from api.admin_auth import get_admin_tenant
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 @router.get("/tenants")
 async def list_all_tenants(
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_api_session),
     admin: Tenant = Depends(get_admin_tenant),
 ):
     """List all tenants with their task counts."""
@@ -51,7 +51,7 @@ async def list_all_tasks(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     status: str = Query(None),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_api_session),
     admin: Tenant = Depends(get_admin_tenant),
 ):
     """List all tasks across all tenants."""
@@ -95,7 +95,7 @@ async def list_all_tasks(
 
 @router.get("/stats")
 async def system_stats(
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_api_session),
     admin: Tenant = Depends(get_admin_tenant),
 ):
     """Get system-wide statistics."""
@@ -128,7 +128,7 @@ async def system_stats(
 @router.post("/tenants/{tenant_id}/toggle")
 async def toggle_tenant(
     tenant_id: str,
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_api_session),
     admin: Tenant = Depends(get_admin_tenant),
 ):
     """Activate or deactivate a tenant."""

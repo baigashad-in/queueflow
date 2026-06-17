@@ -5,15 +5,14 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session as SyncSession
 
-from core.database import Base, get_session
+from core.database import Base, get_api_session
 from core.db_models import Tenant, ApiKey
 from core.config import settings
 from api.main import app
 import fakeredis.aioredis
-
 TEST_DATABASE_URL = settings.database_url
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="function") 
 async def engine():
     """Create a new database engine for each test, and drop all tables after the test finishes."""
     test_engine = create_async_engine(TEST_DATABASE_URL)
@@ -56,11 +55,6 @@ async def test_tenant(test_session):
 @pytest.fixture
 async def client(test_session, test_tenant):
     """Create an AsyncClient for testing the FastAPI app, with the test database session and API key."""
-    async def override_get_session():
-        yield test_session
-
-    # Override the get_session dependency to use the test session
-    app.dependency_overrides[get_session] = override_get_session
 
     # Use ASGITransport to test the FastAPI app without running a server
     transport = ASGITransport(app=app)
@@ -74,7 +68,7 @@ async def client(test_session, test_tenant):
     # Clear dependency overrides after the test finishes to avoid affecting other tests
     app.dependency_overrides.clear()
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 async def fake_redis(monkeypatch):
     """
     Replace the real Redis client with an in-memory fake for the duration of one test.
@@ -177,3 +171,29 @@ def ws_test_client(monkeypatch):
             cookie_tenants.update({cookie: {"tenant_id": tenant_id, "is_active": is_active}})
         )
         yield client
+
+@pytest.fixture(autouse=True)
+async def _override_api_session(engine):
+    """Override get_api_session for every test.
+
+    httpx.ASGITransport does not run FastAPI's lifespan events, so
+    app.state.SessionLocal is never populated. We override
+    get_api_session to yield from a per-call sessionmaker bound to
+    the test engine.
+
+    Per-call (not yielding a shared session) avoids 'another operation
+    in progress' errors when multiple Depends(get_api_session) resolve
+    within a single request.
+    """
+    from api.main import app
+    from core.database import get_api_session, build_sessionmaker
+
+    SessionLocal = build_sessionmaker(engine)
+
+    async def override():
+        async with SessionLocal() as session:
+            yield session
+
+    app.dependency_overrides[get_api_session] = override
+    yield
+    app.dependency_overrides.pop(get_api_session, None)

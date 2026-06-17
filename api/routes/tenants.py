@@ -5,7 +5,7 @@ from sqlalchemy import select
 import uuid
 import logging
 
-from core.database import get_session
+from core.database import get_api_session
 from core.db_models import Tenant, ApiKey
 from api.schemas import TenantCreateRequest, TenantResponse, ApiKeyCreateRequest, ApiKeyResponse
 
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 @router.post("/", response_model = TenantResponse, status_code = 201)
 async def create_tenant(
     request: TenantCreateRequest,
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_api_session),
 ):
     """Create a new tenant."""
     # Check if tenant name already exists
@@ -34,7 +34,7 @@ async def create_tenant(
 async def create_api_key(
     tenant_id: str,
     request: ApiKeyCreateRequest,
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_api_session),
 ):
     """Create a new API key for a tenant."""
     try:
@@ -61,7 +61,7 @@ async def create_api_key(
 @router.get("/{tenant_id}/api-keys", response_model = list[ApiKeyResponse])
 async def list_api_keys(
     tenant_id: str,
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_api_session),
 ):
     """List all API keys for a tenant."""
     try:

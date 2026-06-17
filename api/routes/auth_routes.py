@@ -3,7 +3,7 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from core.database import get_session
+from core.database import get_api_session
 from core.db_models import ApiKey, Tenant 
 
 router = APIRouter(prefix = "/auth", tags = ["Auth"])
@@ -12,7 +12,7 @@ router = APIRouter(prefix = "/auth", tags = ["Auth"])
 async def login(
     response:Response,
     body: dict,
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_api_session),
 ):
     """Validate an API key and set an HTTP-only cookie."""
     key = body.get("api_key", "")

@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
-from core.database import get_session 
+from core.database import get_api_session
 from core.models import TaskStatus
 from core.queue import push_task
 from core.metrics import tasks_submitted_total
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 async def submit_task(
     request: TaskSubmitRequest,
     tenant: Tenant = Depends(get_current_tenant),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_api_session),
 ):
     """
     Submit a new task to the queue.
@@ -84,7 +84,7 @@ async def list_tasks(
     status: Optional[TaskStatus] = Query(None, description="Filter tasks by status"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_api_session),
     tenant: Tenant = Depends(get_current_tenant),
 ):
     """List all tasks with optional status filter and pagination."""
@@ -101,7 +101,7 @@ async def list_tasks(
 @router.get("/{task_id}", response_model = TaskResponse)
 async def get_task(
     task_id: str, 
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_api_session),
     tenant: Tenant = Depends(get_current_tenant),
     ):
     """Get details of a specific task by ID."""
@@ -120,7 +120,7 @@ async def get_task(
 @router.get("/{task_id}/download", response_class=FileResponse)
 async def download_report(
     task_id: str,
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_api_session),
     tenant: Tenant = Depends(get_current_tenant),
 ):
     """Download the result file for a completed task as PDF."""

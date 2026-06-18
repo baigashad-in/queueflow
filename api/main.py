@@ -6,7 +6,7 @@ from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 import core.metrics
 from core.config import settings
-from core.database import init_db
+from core.database import build_engine, build_sessionmaker, Base
 
 from fastapi import FastAPI
 from fastapi.responses import Response, FileResponse
@@ -34,12 +34,19 @@ async def lifespan(app: FastAPI):
     logger.info("PyQueue API starting up...")
     logger.info(f"Environment: {settings.app_env}")
 
+    # Create an async engine bound to the current event loop and attach it
+    # to app.state. This makes the engine scoped to the FastAPI lifespan
+    # rather than being a module-level singleton — necessary for safe use
+    # across thread boundaries (e.g. starlette TestClient).
+    app.state.engine = build_engine()
+    app.state.SessionLocal = build_sessionmaker(app.state.engine)
+
     # Skip database init during tests — the test engine fixture handles
     # table creation, and re-running init_db() under TestClient's event
     # loop causes asyncpg cross-loop errors.
     if settings.app_env != "testing":
-        # Create database tables on startup (when not testing)
-        await init_db() # Initialize database tables on startup (when not testing)
+        async with app.state.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
         logger.info("Database tables ready")
     else:
         logger.info("Skipping init_db() — running under tests")

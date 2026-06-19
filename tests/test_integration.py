@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from api.main import app
-from core.database import get_session
+
 from core.db_models import ApiKey, Tenant, TaskRecord
 from core.models import TaskStatus
 
@@ -214,7 +214,7 @@ class TestSchedulerLoopIntegration:
         async def override_get_session():
             yield test_session
 
-        monkeypatch.setattr(sl_module, "get_session", override_get_session)
+        monkeypatch.setattr(sl_module, "get_worker_session", override_get_session)
 
         # Run the loop in the background. It has a sleep(5) at the bottom of
         # each iteration so it shouldn't burn CPU. Give it a moment to act.
@@ -274,7 +274,7 @@ class TestSchedulerLoopIntegration:
         async def override_get_session():
             yield test_session
 
-        monkeypatch.setattr(sl_module, "get_session", override_get_session)
+        monkeypatch.setattr(sl_module, "get_worker_session", override_get_session)
 
         loop_task = asyncio.create_task(sl_module.scheduler_loop())
         try:
@@ -311,7 +311,7 @@ class TestSchedulerLoopIntegration:
         async def override_get_session():
             yield test_session
 
-        monkeypatch.setattr(sl_module, "get_session", override_get_session)
+        monkeypatch.setattr(sl_module, "get_worker_session", override_get_session)
 
         loop_task = asyncio.create_task(sl_module.scheduler_loop())
         try:

@@ -175,7 +175,7 @@ class TestProcessWithLimit:
             yield test_session
 
         with patch("worker.worker.dispatch", side_effect=fake_dispatch), \
-             patch("worker.worker.get_session", fake_get_session):
+             patch("worker.worker.get_worker_session", fake_get_session):
             await process_with_limit(semaphore, str(task.id))
 
         # Dispatch never ran because the lock acquisition failed
@@ -202,7 +202,7 @@ class TestProcessWithLimit:
             yield test_session
 
         with patch("worker.worker.dispatch", side_effect=fake_dispatch), \
-             patch("worker.worker.get_session", fake_get_session):
+             patch("worker.worker.get_worker_session", fake_get_session):
             await process_with_limit(semaphore, str(task.id))
 
         # Should have skipped due to the cancellation marker
@@ -220,7 +220,7 @@ class TestProcessWithLimit:
             yield test_session
 
         with patch("worker.worker.dispatch", side_effect=fake_dispatch), \
-             patch("worker.worker.get_session", fake_get_session):
+             patch("worker.worker.get_worker_session", fake_get_session):
             await process_with_limit(semaphore, str(task.id))
 
         await test_session.refresh(task)
@@ -238,7 +238,7 @@ class TestProcessWithLimit:
         async def fake_get_session():
             yield test_session
 
-        with patch("worker.worker.get_session", fake_get_session):
+        with patch("worker.worker.get_worker_session", fake_get_session):
             # Should not raise
             await process_with_limit(semaphore, fake_task_id)
 

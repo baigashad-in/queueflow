@@ -7,9 +7,10 @@ import httpx
 from PIL import Image
 from io import BytesIO
 from typing import Any
-from core.database import get_session
+
 from core.db_models import TaskRecord
 from sqlalchemy import select, func
+from worker.db import get_worker_session
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -146,7 +147,7 @@ async def handle_generate_report(payload: dict, task_id: str = None) -> dict:
     total = 0
 
     try:
-        async for session in get_session():
+        async for session in get_worker_session():
             query = select(TaskRecord.status, func.count(TaskRecord.id)).group_by(TaskRecord.status)
             if task_id:
                 query = query.where(TaskRecord.id != task_id)

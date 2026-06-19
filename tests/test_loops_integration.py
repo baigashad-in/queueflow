@@ -54,7 +54,7 @@ class TestPollLoopIntegration:
         # Patch get_session in the worker module to use our test session
         async def override_get_session():
             yield test_session
-        monkeypatch.setattr(worker_module, "get_session", override_get_session)
+        monkeypatch.setattr(worker_module, "get_worker_session", override_get_session)
 
         # Patch dispatch to a fast no-op so the task completes immediately
         async def fast_dispatch(name, payload, task_id=None):

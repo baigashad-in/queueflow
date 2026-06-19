@@ -8,7 +8,7 @@ import httpx
 
 from core.config import settings
 from core.queue import pop_task, get_queue_depths
-from core.database import get_session
+
 from core.db_models import TaskRecord
 from core.models import TaskStatus
 from core.events import publish_task_event
@@ -26,6 +26,7 @@ from core.metrics import (
 from sqlalchemy import select
 from datetime import datetime, timezone
 from prometheus_client import start_http_server
+from worker.db import init_worker_db, get_worker_session, dispose_worker_db
 from worker.scheduler_loop import scheduler_loop
 from worker.heartbeat import heartbeat_loop
 from worker.handlers import dispatch
@@ -115,7 +116,7 @@ async def process_with_limit(semaphore, task_id):
         
         try:
             # If the task is not processed by another worker, we fetch it from the database and process it as usual. We also check if the task was cancelled by user while we were waiting for the lock - if so, we skip processing.
-            async for session in get_session():
+            async for session in get_worker_session():
                 result = await session.execute(
                     select(TaskRecord).where(TaskRecord.id == task_id)
                 )
@@ -238,12 +239,16 @@ if __name__ == "__main__": # pragma: no cover
     async def main():
         worker_id = str(uuid.uuid4())[:8] # Short unique ID for this worker instance
         logger.info(f"Worker {worker_id} starting...")
+        init_worker_db() # Initialize the worker's database engine and sessionmaker
         """Run the poll loop, scheduler loop and heatbeat loop concurrently."""
-        await asyncio.gather(
-            poll_loop(), 
-            scheduler_loop(),
-            heartbeat_loop(worker_id),
-            )
+        try:
+            await asyncio.gather(
+                poll_loop(), 
+                scheduler_loop(),
+                heartbeat_loop(worker_id),
+                )
+        finally:
+            await dispose_worker_db() # Dispose the worker's database engine and sessionmaker
     asyncio.run(main())
 
     

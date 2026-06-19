@@ -3,10 +3,10 @@ import logging
 
 from core.scheduler import get_due_tasks, remove_scheduled
 from core.queue import push_task
-from core.database import get_session
 from core.db_models import TaskRecord
 from core.models import TaskStatus
 from sqlalchemy import select
+from worker.db import get_worker_session
 
 
 async def scheduler_loop():
@@ -23,7 +23,7 @@ async def scheduler_loop():
                     logger.info(f"Moved scheduled task to work queue: {task_id}")
                     
                     # Update task status in the database
-                    async for session in get_session():
+                    async for session in get_worker_session():
                         result = await session.execute(select(TaskRecord).where(TaskRecord.id == task_id))
                         task_record = result.scalar_one_or_none()
                         if task_record:

@@ -197,3 +197,26 @@ async def _override_api_session(engine):
     app.dependency_overrides[get_api_session] = override
     yield
     app.dependency_overrides.pop(get_api_session, None)
+
+
+@pytest.fixture
+def ws_test_client_real_db(monkeypatch, engine):
+    """Proof-of-concept: TestClient with real DB-backed WS auth.
+
+    Unlike ws_test_client, this does NOT monkeypatch get_tenant_from_cookie.
+    TestClient runs the lifespan in its own thread, which builds an engine
+    in that thread's event loop pointing at the same test database. The
+    auth helper queries real tenant/api_key rows seeded by the test.
+
+    This is a temporary fixture used to validate the approach before
+    rewriting ws_test_client. If this works, ws_test_client gets replaced.
+    """
+    monkeypatch.setenv("APP_ENV", "testing")
+    from core.config import settings
+    monkeypatch.setattr(settings, "app_env", "testing", raising=False)
+
+    from fastapi.testclient import TestClient
+    from api.main import app
+
+    with TestClient(app) as client:
+        yield client

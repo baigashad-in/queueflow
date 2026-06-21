@@ -105,21 +105,40 @@ class TestWebSocketIntegration:
                 ws.receive_text()
         assert exc.value.code == 4001
 
-    def test_websocket_rejects_inactive_tenant(self, ws_test_client):
-        """Valid cookie but the tenant is inactive → 4001."""
-        tenant_id = uuid.uuid4()
-        ws_test_client.register_session("inactive-key", tenant_id, is_active=False)
+    def test_websocket_rejects_inactive_tenant(self, ws_test_client, test_session_sync):
+        """Valid api_key but the tenant.is inactive = False → 4001."""
+        from core.db_models import Tenant, ApiKey
+
+        tenant = Tenant(name = f"Inactive -{uuid.uuid4().hex[:8]}", is_active=False)
+        test_session_sync.add(tenant)
+        test_session_sync.commit()
+        test_session_sync.refresh(tenant)
+
+        api_key = ApiKey(tenant_id = tenant.id, key = "inactive-key", is_active = False)
+        test_session_sync.add(api_key)
+        test_session_sync.commit()
+
+
         ws_test_client.cookies.set("qf_session", "inactive-key")
         with pytest.raises(WebSocketDisconnect) as exc:
             with ws_test_client.websocket_connect("/ws/tasks") as ws:
                 ws.receive_text()
         assert exc.value.code == 4001
 
-    def test_websocket_accepts_valid_cookie_and_forwards_event(self, ws_test_client):
+    def test_websocket_accepts_valid_cookie_and_forwards_event(self, ws_test_client, test_session_sync):
         """Authenticated client receives events tagged with its tenant_id."""
-        tenant_id = uuid.uuid4()
-        tenant_id_str = str(tenant_id)
-        ws_test_client.register_session("valid-key", tenant_id)
+        from core.db_models import Tenant, ApiKey
+
+        tenant = Tenant(name = f"Valid-{uuid.uuid4().hex[:8]}", is_active = True)
+        test_session_sync.add(tenant)
+        test_session_sync.commit()
+        test_session_sync.refresh(tenant)
+
+        api_key = ApiKey(tenant_id = tenant.id, key = "valid-key", is_active = True)
+        test_session_sync.add(api_key)
+        test_session_sync.commit()
+
+        tenant_id_str = str(tenant.id)
 
         events = [{
             "task_id": "task-1",
@@ -137,18 +156,25 @@ class TestWebSocketIntegration:
                 assert received["task_id"] == "task-1"
                 assert received["tenant_id"] == tenant_id_str
 
-    def test_websocket_filters_events_from_other_tenants(self, ws_test_client):
+    def test_websocket_filters_events_from_other_tenants(self, ws_test_client, test_session_sync):
         """Security-critical: events for a different tenant must NOT be forwarded.
 
         Tenant A connects; the event stream contains one event for tenant B
         (must be filtered out) followed by one for A (must arrive).
         """
-        tenant_a_id = uuid.uuid4()
-        tenant_b_id = uuid.uuid4()
-        a_id_str = str(tenant_a_id)
-        b_id_str = str(tenant_b_id)
+        from core.db_models import Tenant, ApiKey
 
-        ws_test_client.register_session("key-a", tenant_a_id)
+        tenant_a = Tenant(name=f"TenantA-{uuid.uuid4().hex[:8]}", is_active=True)
+        test_session_sync.add(tenant_a)
+        test_session_sync.commit()
+        test_session_sync.refresh(tenant_a)
+
+        api_key = ApiKey(tenant_id = tenant_a.id, key="key-a", is_active=True)
+        test_session_sync.add(api_key)
+        test_session_sync.commit()
+
+        a_id_str = str(tenant_a.id)
+        b_id_str = str(uuid.uuid4())  # Random UUID for tenant B (tenant B doesn't need a DB row)
 
         events = [
             {"task_id": "for-b", "task_name": "x", "status": "completed",
@@ -332,43 +358,3 @@ class TestSchedulerLoopIntegration:
         scheduled_score = await fake_redis.zscore("queueflow:scheduled", orphan_id)
         assert scheduled_score is None
 
-
-class TestWebSocketRealDBProof:
-    """Proof-of-concept: WS auth via real DB lookup, no monkeypatching.
-
-    If this passes, the cross-loop assumption holds and we can rewrite
-    ws_test_client + existing WS tests to use real DB lookups.
-    """
-
-    def test_real_db_lookup_accepts_valid_cookie(
-        self, ws_test_client_real_db, test_session_sync
-    ):
-        """Seed a real tenant + key, connect with the cookie, receive an event."""
-        from core.db_models import Tenant, ApiKey
-
-        tenant = Tenant(name=f"RealDB-{uuid.uuid4().hex[:8]}", is_active=True)
-        test_session_sync.add(tenant)
-        test_session_sync.commit()
-        test_session_sync.refresh(tenant)
-
-        api_key = ApiKey(tenant_id=tenant.id, key="real-key", is_active=True)
-        test_session_sync.add(api_key)
-        test_session_sync.commit()
-
-        tenant_id_str = str(tenant.id)
-
-        events = [{
-            "task_id": "proof-1",
-            "task_name": "send_email",
-            "status": "completed",
-            "tenant_id": tenant_id_str,
-            "priority": 5,
-        }]
-
-        import api.routes.ws as ws_module
-        with patch.object(ws_module, "subscribe_to_events", _make_event_generator(events)):
-            ws_test_client_real_db.cookies.set("qf_session", "real-key")
-            with ws_test_client_real_db.websocket_connect("/ws/tasks") as ws:
-                received = ws.receive_json()
-                assert received["task_id"] == "proof-1"
-                assert received["tenant_id"] == tenant_id_str

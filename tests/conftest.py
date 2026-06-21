@@ -198,18 +198,22 @@ async def _override_api_session(engine):
     yield
     app.dependency_overrides.pop(get_api_session, None)
 
-
 @pytest.fixture
-def ws_test_client_real_db(monkeypatch, engine):
-    """Proof-of-concept: TestClient with real DB-backed WS auth.
+def ws_test_client(monkeypatch, engine):
+    """TestClient with real DB-backed WebSocket auth.
 
-    Unlike ws_test_client, this does NOT monkeypatch get_tenant_from_cookie.
-    TestClient runs the lifespan in its own thread, which builds an engine
-    in that thread's event loop pointing at the same test database. The
-    auth helper queries real tenant/api_key rows seeded by the test.
+    TestClient runs the ASGI app in its own thread with its own event
+    loop. The production lifespan runs in that loop and populates
+    app.state.engine + app.state.SessionLocal there, bound to the
+    TestClient loop and pointing at the same test database that the
+    main test loop uses.
 
-    This is a temporary fixture used to validate the approach before
-    rewriting ws_test_client. If this works, ws_test_client gets replaced.
+    Tests seed tenant/api_key rows via test_session_sync (a sync engine,
+    independent of either async loop) and connect with a cookie matching
+    the seeded api_key.
+
+    APP_ENV=testing causes the lifespan to skip Base.metadata.create_all
+    — the test engine fixture already created the schema.
     """
     monkeypatch.setenv("APP_ENV", "testing")
     from core.config import settings

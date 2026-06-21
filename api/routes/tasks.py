@@ -6,6 +6,7 @@ import os
 import tempfile
 
 from fpdf import FPDF
+from fpdf.enums import XPos, YPos
 
 from typing import Optional
 from datetime import datetime, timezone
@@ -145,34 +146,34 @@ async def download_report(
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Helvetica", "B", 20)
-    pdf.cell(0, 15, "QueueFlow Report", ln=True, align="C")
+    pdf.cell(0, 15, "QueueFlow Report", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
     pdf.ln(5)
 
     pdf.set_font("Helvetica", "", 11)
     pdf.set_text_color(100, 100, 100)
-    pdf.cell(0, 8, f"Report Type: {report_data.get('report_type', 'N/A')}", ln=True)
-    pdf.cell(0, 8, f"Generated At: {report_data.get('generated_at', 'N/A')}", ln=True)
-    pdf.cell(0, 8, f"Total Tasks: {report_data.get('total_tasks', 0)}", ln=True)
+    pdf.cell(0, 8, f"Report Type: {report_data.get('report_type', 'N/A')}", new_x = XPos.LMARGIN, new_y = YPos.NEXT)
+    pdf.cell(0, 8, f"Generated At: {report_data.get('generated_at', 'N/A')}", new_x = XPos.LMARGIN, new_y = YPos.NEXT)
+    pdf.cell(0, 8, f"Total Tasks: {report_data.get('total_tasks', 0)}", new_x = XPos.LMARGIN, new_y = YPos.NEXT)
     pdf.ln(5)
 
     # Status breakdown table
     status_breakdown = report_data.get("status_breakdown", {})
     if status_breakdown:
         pdf.set_font("Helvetica", "B", 14)
-        pdf.cell(0, 10, "Status Breakdown", ln=True)
+        pdf.cell(0, 10, "Status Breakdown", new_x = XPos.LMARGIN, new_y = YPos.NEXT)
         pdf.ln(3)
 
         pdf.set_font("Helvetica", "B", 11)
         pdf.set_fill_color(40, 40, 60)
         pdf.set_text_color(255, 255, 255)
         pdf.cell(95, 10, "Status", border=1, fill=True)
-        pdf.cell(95, 10, "Count", border=1, fill=True, ln=True)
+        pdf.cell(95, 10, "Count", border=1, fill=True, new_x = XPos.LMARGIN, new_y = YPos.NEXT)
 
         pdf.set_font("Helvetica", "", 11)
         pdf.set_text_color(0, 0, 0)
         for status, count in status_breakdown.items():
             pdf.cell(95, 9, str(status).upper(), border=1)
-            pdf.cell(95, 9, str(count), border=1, ln=True)
+            pdf.cell(95, 9, str(count), border=1, new_x = XPos.LMARGIN, new_y = YPos.NEXT)
 
     # Save to temp file
     pdf_path = tempfile.mktemp(suffix=".pdf")

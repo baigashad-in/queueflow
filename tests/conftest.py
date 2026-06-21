@@ -127,51 +127,6 @@ def test_session_sync(engine):
         sync_engine.dispose()
 
 
-@pytest.fixture
-def ws_test_client(monkeypatch):
-    """TestClient that bypasses the WebSocket route's DB auth lookup entirely.
-
-    Instead of patching get_session (which doesn't work because the async
-    engine's connection pool is tied to the main test loop, while
-    TestClient runs in its own thread/loop), we patch the
-    `get_tenant_from_cookie` helper directly. Tests register a cookie→tenant
-    mapping via the `register_session` method on the returned client.
-    """
-    monkeypatch.setenv("APP_ENV", "testing")
-    from core.config import settings
-    monkeypatch.setattr(settings, "app_env", "testing", raising=False)
-
-    # In-memory cookie→tenant mapping populated by tests
-    cookie_tenants = {}
-
-    # Build a fake tenant class to mimic what the real route expects
-    class FakeTenant:
-        def __init__(self, tenant_id, is_active=True):
-            self.id = tenant_id
-            self.is_active = is_active
-
-    async def fake_get_tenant_from_cookie(websocket):
-        cookie = websocket.cookies.get("qf_session")
-        if not cookie or cookie not in cookie_tenants:
-            return None
-        entry = cookie_tenants[cookie]
-        if not entry["is_active"]:
-            return None
-        return FakeTenant(entry["tenant_id"], is_active=True)
-
-    import api.routes.ws as ws_module
-    monkeypatch.setattr(ws_module, "get_tenant_from_cookie", fake_get_tenant_from_cookie)
-
-    from fastapi.testclient import TestClient
-    from api.main import app
-
-    with TestClient(app) as client:
-        # Attach helpers so tests can register sessions
-        client.register_session = lambda cookie, tenant_id, is_active=True: (
-            cookie_tenants.update({cookie: {"tenant_id": tenant_id, "is_active": is_active}})
-        )
-        yield client
-
 @pytest.fixture(autouse=True)
 async def _override_api_session(engine):
     """Override get_api_session for every test.

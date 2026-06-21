@@ -63,13 +63,11 @@ def _make_event_generator(events):
 WebSocket integration tests for /ws/tasks.
 
 Tests cookie-based auth, connection lifecycle, and tenant-scoped event
-filtering. The `ws_test_client` fixture bypasses the route's DB lookup
-(get_tenant_from_cookie) via monkeypatch — necessary because TestClient
-runs in a separate thread/loop while the production async engine is
-bound to the main test loop, causing asyncpg cross-loop errors.
-
-Database state isn't needed: the auth helper is replaced with an
-in-memory cookie→tenant map populated by client.register_session().
+filtering. The `ws_test_client` fixture uses real DB-backed auth: tests
+seed tenant/api_key rows via `test_session_sync` and connect with a
+cookie matching the seeded api_key. TestClient runs the production
+lifespan in its own thread, which builds an engine in that thread's
+event loop pointing at the same test database.
 """
 import asyncio
 import uuid
@@ -109,12 +107,12 @@ class TestWebSocketIntegration:
         """Valid api_key but the tenant.is inactive = False → 4001."""
         from core.db_models import Tenant, ApiKey
 
-        tenant = Tenant(name = f"Inactive -{uuid.uuid4().hex[:8]}", is_active=False)
+        tenant = Tenant(name = f"Inactive-{uuid.uuid4().hex[:8]}", is_active=False)
         test_session_sync.add(tenant)
         test_session_sync.commit()
         test_session_sync.refresh(tenant)
 
-        api_key = ApiKey(tenant_id = tenant.id, key = "inactive-key", is_active = False)
+        api_key = ApiKey(tenant_id = tenant.id, key = "inactive-key", is_active = True)
         test_session_sync.add(api_key)
         test_session_sync.commit()
 
@@ -236,11 +234,11 @@ class TestSchedulerLoopIntegration:
         score = await fake_redis.zscore("queueflow:scheduled", str(task.id))
         assert score is not None
 
-        # Patch the loop's get_session to use our test session
-        async def override_get_session():
+        # Patch the loop's get_worker_session to use our test session
+        async def override_get_worker_session():
             yield test_session
 
-        monkeypatch.setattr(sl_module, "get_worker_session", override_get_session)
+        monkeypatch.setattr(sl_module, "get_worker_session", override_get_worker_session)
 
         # Run the loop in the background. It has a sleep(5) at the bottom of
         # each iteration so it shouldn't burn CPU. Give it a moment to act.
@@ -297,10 +295,10 @@ class TestSchedulerLoopIntegration:
         # Schedule for 5 minutes in the future
         await schedule_task(str(task.id), time.time() + 300)
 
-        async def override_get_session():
+        async def override_get_worker_session():
             yield test_session
 
-        monkeypatch.setattr(sl_module, "get_worker_session", override_get_session)
+        monkeypatch.setattr(sl_module, "get_worker_session", override_get_worker_session)
 
         loop_task = asyncio.create_task(sl_module.scheduler_loop())
         try:
@@ -334,10 +332,10 @@ class TestSchedulerLoopIntegration:
         orphan_id = str(uuid.uuid4())
         await schedule_task(orphan_id, time.time() - 10)
 
-        async def override_get_session():
+        async def override_get_worker_session():
             yield test_session
 
-        monkeypatch.setattr(sl_module, "get_worker_session", override_get_session)
+        monkeypatch.setattr(sl_module, "get_worker_session", override_get_worker_session)
 
         loop_task = asyncio.create_task(sl_module.scheduler_loop())
         try:

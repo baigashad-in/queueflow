@@ -51,10 +51,10 @@ class TestPollLoopIntegration:
         # Push the task ID onto the work queue
         await push_task(task_id_str, 5)
 
-        # Patch get_session in the worker module to use our test session
-        async def override_get_session():
+        # Patch get_worker_session in the worker module to use our test session
+        async def override_get_worker_session():
             yield test_session
-        monkeypatch.setattr(worker_module, "get_worker_session", override_get_session)
+        monkeypatch.setattr(worker_module, "get_worker_session", override_get_worker_session)
 
         # Patch dispatch to a fast no-op so the task completes immediately
         async def fast_dispatch(name, payload, task_id=None):

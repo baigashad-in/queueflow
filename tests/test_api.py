@@ -1,6 +1,5 @@
 from httpx import AsyncClient, ASGITransport
 from api.main import app
-from core.database import get_session
 
 async def test_submit_task(client):
     """Test submitting a task through the API."""
@@ -75,11 +74,7 @@ async def test_invalid_task_submission(client):
 
 async def test_missing_api_key(test_session, test_tenant, engine):
     """Requests without API key should be rejected."""
-    async def override_get_session():
-        yield test_session
 
-    # Override the get_session dependency to use the test session
-    app.dependency_overrides[get_session] = override_get_session
     transport = ASGITransport(app= app)
 
     # Make a request without the API key
@@ -95,11 +90,6 @@ async def test_missing_api_key(test_session, test_tenant, engine):
 async def test_wrong_api_key(test_session, test_tenant, engine):
     """Requests with invalid API key should be rejected."""
 
-    async def override_get_session():
-        yield test_session
-
-    # Override the get_session dependency to use the test session
-    app.dependency_overrides[get_session] = override_get_session
     transport = ASGITransport(app = app)
 
     # Make a request with an incorrect API key
@@ -145,10 +135,6 @@ async def test_cancel_already_cancelled_task(client):
 async def test_cancel_invalid_task_id(test_session, test_tenant, engine):
     """Test canceling a task with an invalid task ID."""
     
-    async def override_get_session():
-        yield test_session
-    
-    app.dependency_overrides[get_session] = override_get_session
     transport = ASGITransport(app = app)
 
     # Attempt to cancel a task with an invalid ID

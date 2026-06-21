@@ -10,7 +10,6 @@ import pytest
 from httpx import AsyncClient, ASGITransport
 
 from api.main import app
-from core.database import get_session
 from core.db_models import ApiKey, Tenant, TaskRecord
 from core.models import TaskStatus
 
@@ -43,10 +42,7 @@ async def _make_tenant(session, name=None, is_admin=False, is_active=True, key=N
 
 def _build_client(session, api_key):
     """Build an AsyncClient bound to a specific test session and API key."""
-    async def override_get_session():
-        yield session
 
-    app.dependency_overrides[get_session] = override_get_session
     transport = ASGITransport(app=app)
     return AsyncClient(
         transport=transport,

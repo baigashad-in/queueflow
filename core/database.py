@@ -39,11 +39,6 @@ async def init_db():
         await conn.run_sync(Base.metadata.create_all)
 
 
-async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    """Dependency for FastAPI route injection."""
-    async with AsyncSessionLocal() as session:
-        yield session
-
 async def get_api_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency that yields a session from the lifespan-scoped engine.
 

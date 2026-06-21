@@ -1,0 +1,11 @@
+[run]
+source =
+    api
+    core
+    worker
+    services
+    repositories
+omit =
+    tests/*
+    */__init__.py
+sigterm = true

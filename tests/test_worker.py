@@ -299,6 +299,102 @@ class TestFireWebhook:
             # Should NOT raise — exception is caught and logged
             await fire_webhook(task)
 
+# ────────────────────────────────────────────────────────────────────
+# fire_webhook_ssrf_guard
+# ────────────────────────────────────────────────────────────────────
+class TestFireWebhookSSRF:
+    """SSRF guards on fire_webhook callback URLs.
+    
+    The worker must refuse to POST to URLs that resolve to private,
+    loopback, link-local, multicast, reserved, or unspecified IPs,
+    or to non-https shcemes. Thesre the standars SSRF target
+    classes - could-metadata endpoints ,
+    internal-network addresses, and protocol-smuggling
+    via file://, gopher://, etc.
+    """
+
+    @pytest.mark.parametrize("bad_url",[
+        "http://169.254.169.254/latest/meta-data/", # cloud metadata
+        "http://127.0.0.1/", # IPv4 loopback
+        "http://10.0.0.5/internal", # RFC1918 10/8
+        "http://172.16.0.5/internal", # RFC1918 172.16/12
+        "http://192.168.1.1/router", # RFC1918 192.168/16
+        "http://[::1]/admin", # IPv6 loopback
+        "file:///etc/passwd", # file scheme
+        "gopher://interval-svc/", # gopher scheme
+        "ftp://internal-svc/", # ftp scheme
+    ])
+    async def test_dangerous_callback_urls_are_rejected(
+        self, fake_redis, test_session, bad_url
+    ):
+        """Validator must block these before any POST is attempted."""
+        task = await _make_task(test_session)
+        task.callback_url = bad_url
+        await test_session.commit()
+
+        # Patch https so we fail loudly if the validator missed the URL.
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(
+                side_effect = AssertionError(f"Worker tried to POST to {bad_url}")
+            )
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+
+            # Should return cleanly - validator catches it, logs, bails.
+            await fire_webhook(task)
+
+            mock_client.post.assert_not_called()  
+
+
+    async def test_http_callback_rejected_when_flag_disabled(
+        self, fake_redis, test_session, monkeypatch,
+    ):
+        """Plain http rejected by default, even to public host."""
+        monkeypatch.setattr("worker.worker.ALLOW_HTTP_CALLBACKS", False)
+
+        task = await _make_task(test_session)
+        task.callback_url = "http://example.com/hook"
+        await test_session.commit()
+
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(
+                side_effect = AssertionError("Worker tried to POST over plain http")
+            )
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+
+            await fire_webhook(task)
+            mock_client.post.assert_not_called()
+        
+    async def test_redirects_disabled_on_httpx_client(
+            self, fake_redis, test_session,
+    ):
+        """httpx.AsyncClieng must be constructed with follow_redirects = False.
+        
+        Otherwise an attacker can submit a public https URL that
+        302-redirects to http://169.254.169.254/... - the validator
+        only sees the initial URL, so the redirect would bypass it.
+        """
+        task = await _make_task(test_session)
+        task.callback_url = "https://example.com/hook"
+        await test_session.commit()
+
+        mock_repsonse = MagicMock()
+        mock_repsonse.status_code = 200
+
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(return_value = mock_repsonse)
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+
+            await fire_webhook(task)
+
+            mock_client_class.assert_called_once()
+            _, kwargs = mock_client_class.call_args
+            assert kwargs.get("follow_redirects") is False, (
+                "httpx.AsyncClient must be created with follow_redirects = False" 
+                "to prevent SSRF via redirect to private IPs"
+            )
 
 # ────────────────────────────────────────────────────────────────────
 # update_idle_metrics

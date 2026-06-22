@@ -5,6 +5,10 @@ import signal
 import uuid
 import random
 import httpx
+import ipaddress
+import socket
+
+from urllib.parse import urlparse
 
 from core.config import settings
 from core.queue import pop_task, get_queue_depths
@@ -32,6 +36,10 @@ from worker.heartbeat import heartbeat_loop
 from worker.handlers import dispatch
 from core.constants import CANCELLATION_MESSAGE, QUEUE_LABEL_HIGH, QUEUE_LABEL_MEDIUM, QUEUE_LABEL_LOW
 
+# SSRF guard for fire_webhook(). Set True only if you genuinely need
+# http:// callbacks (local dev/testing). In prod this stays False so
+# only https:// URLs are allowed.
+ALLOW_HTTP_CALLBACKS = False
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -212,9 +220,70 @@ async def poll_loop(
         await asyncio.gather(*active_tasks, return_exceptions = True)
     logger.info("All tasks completed. Worker shutdown cleanly.")
     
+def _is_url_safe_for_callback(url: str) -> tuple[bool, str]:
+    """Validate a callback URL before the worker POSTs to it.
+    
+    Rejects:
+    - non-https(s) schemes (file://, gopher://, ftp://, ...)
+    - http:// unless ALLOW_HTTP_CALLBACKS is True (dev opt-in)
+    - URLS whose resolved Ips land in private, loopback, link-local,
+    multicast, reserved, or unspecified ranges - these are the
+    cloud-metadat and internal-network targets
+    an SSRF attacker would aim at
+
+    Returns (ok, reason). On rejection, `reason` is logged so we can
+    audit waht URLs are being submitted.
+    """
+    try:
+        parsed = urlparse(url)
+    except Exception as e:
+        return False, f"could not parse URL: {e}"
+
+    if parsed.scheme == "https":
+        pass
+    elif parsed.scheme == "http" and ALLOW_HTTP_CALLBACKS:
+        pass
+    else:
+         return False, f"scheme {parsed.scheme!r} not allowed"
+    
+    hostname = parsed.hostname
+    if not hostname:
+        return False, "no hostname in URL"
+    
+    try:
+        infos = socket.getaddrinfo(hostname, None)
+    except socket.gaierror as e:
+        return False, f"DNS lookup failed for {hostname!r}: {e}"
+    
+    for info in infos:
+        ip_str = info[4][0]
+        try:
+            ip = ipaddress.ip_address(ip_str)
+        except ValueError:
+            return False, f"resolved IP {ip_str!r} is invalid"
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+        ):
+            return False, f"resolved IP {ip_str!r} is in a forbidden range"
+        
+    return True, ""
+
 async def fire_webhook(task: TaskRecord) -> None:
     """POST task result to the callback URL if one was provided."""
     if not task.callback_url:
+        return
+    
+    ok, reason = _is_url_safe_for_callback(task.callback_url)
+    if not ok:
+        logger.warning(
+            f"Webhook skipped for task {task.id}: "
+            f"callback_url {task.callback_url!r} rejected ({reason})"
+        )
         return
     
     payload= {
@@ -228,7 +297,7 @@ async def fire_webhook(task: TaskRecord) -> None:
     }
 
     try: 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(follow_redirects=False) as client:
             response = await client.post(task.callback_url, json=payload, timeout = 10)
             logger.info(f"Webhook fired for task {task.id} to {task.callback_url} - HTTP { response.status_code}")
     except Exception as e:

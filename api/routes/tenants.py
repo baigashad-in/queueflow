@@ -8,6 +8,7 @@ import logging
 from core.database import get_api_session
 from core.db_models import Tenant, ApiKey
 from api.schemas import TenantCreateRequest, TenantResponse, ApiKeyCreateRequest, ApiKeyResponse
+from api.auth import get_current_tenant, require_admin_tenant
 
 router = APIRouter(prefix = "/tenants", tags = ["Tenants"])
 logger = logging.getLogger(__name__)
@@ -16,8 +17,9 @@ logger = logging.getLogger(__name__)
 async def create_tenant(
     request: TenantCreateRequest,
     session: AsyncSession = Depends(get_api_session),
+    _admin: Tenant = Depends(require_admin_tenant), # admin only
 ):
-    """Create a new tenant."""
+    """Create a new tenant. Admin only."""
     # Check if tenant name already exists
     existing_tenant = await session.execute(
         select(Tenant).where(Tenant.name == request.name)
@@ -35,12 +37,20 @@ async def create_api_key(
     tenant_id: str,
     request: ApiKeyCreateRequest,
     session: AsyncSession = Depends(get_api_session),
+    current_tenant: Tenant = Depends(get_current_tenant),
 ):
-    """Create a new API key for a tenant."""
+    """Create a new API key for a tenant.
+    
+    Caller must be authenticated as the tenant in the path, OR be an admin.
+    """
     try:
         tenant_uuid = uuid.UUID(tenant_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid tenant ID format")
+    
+    # Owenership check
+    if current_tenant.id != tenant_uuid and not current_tenant.is_admin:
+        raise HTTPException(status_code=403, detail="Forbidden")
     
     result = await session.execute(
         select(Tenant).where(Tenant.id == tenant_uuid, Tenant.is_active == True)
@@ -62,13 +72,21 @@ async def create_api_key(
 async def list_api_keys(
     tenant_id: str,
     session: AsyncSession = Depends(get_api_session),
+    current_tenant: Tenant = Depends(get_current_tenant),
 ):
-    """List all API keys for a tenant."""
+    """List all API keys for a tenant.
+    
+    Caller must be authenticated as the tenant in the path, OR be an admin.
+    """
     try:
         tenant_uuid = uuid.UUID(tenant_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid tenant ID format")
     
+    # Ownership check
+    if current_tenant.id != tenant_uuid and not current_tenant.is_admin:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
     result = await session.execute(
         select(ApiKey).where(ApiKey.tenant_id == tenant_uuid)
     )

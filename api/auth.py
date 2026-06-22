@@ -38,3 +38,16 @@ async def get_current_tenant(
         raise HTTPException(status_code=401, detail="Tenant not found or inactive")
     
     return tenant
+
+async def require_admin_tenant(
+        tenant: Tenant = Depends(get_current_tenant),
+) -> Tenant:
+    """Require the caller's tenant to have admin privileges.
+    
+    Builds on get_current_tenant: caller must be authenticated AND
+    is_admin = True. Used to gate  routes like POST /tenants/ that
+    shouldn't be self-service.
+    """
+    if not tenant.is_admin:
+        raise HTTPException(status_code=403, detail="Admin privileges required")
+    return tenant

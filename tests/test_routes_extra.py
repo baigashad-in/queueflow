@@ -243,16 +243,40 @@ class TestAuthRoutes:
 # ════════════════════════════════════════════════════════════════════
 
 class TestTenantRoutes:
+
+    # ─── create_tenant: now admin-gated ───────────────────────────────
+
+    async def test_create_tenant_requires_admin(self, test_session):
+        """Non-admin caller posting to /tenants/ gets 403."""
+        _, regular_key = await _make_tenant(test_session, is_admin = False)
+        async with _build_client(test_session, regular_key) as client:
+            resp = await client.post("/tenants/", json={"name": "New Co"})
+        assert resp.status_code == 403
+        app.dependency_overrides.clear()
+
+    async def test_create_tenant_without_auth_returns_401(self, test_session):
+        """Anonymous POST to /tenants/ gets 401, not a silently-created tenant."""
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post("/tenants/", json = {"name": "Sneaky Co"})
+        assert resp.status_code == 401
+        app.dependency_overrides.clear()
+
     async def test_create_duplicate_tenant_returns_409(self, test_session):
-        _, key = await _make_tenant(test_session, name="Acme Corp")
-        async with _build_client(test_session, key) as client:
+        """Admin caller hits the 409 duplicate-name path."""
+        await _make_tenant(test_session, name = "Acme Corp")
+        _, admin_key = await _make_tenant(test_session, name = "Admin", is_admin = True)
+        async with _build_client(test_session, admin_key) as client:
             # Try to create another tenant with the same name
-            resp = await client.post("/tenants/", json={"name": "Acme Corp"})
+            resp = await client.post("/tenants/", json = {"name": "Acme Corp"})
         assert resp.status_code == 409
         assert "already exists" in resp.json()["detail"]
         app.dependency_overrides.clear()
 
+    # ─── create_api_key: now tenant-scoped ────────────────────────────
+
     async def test_create_api_key_invalid_uuid(self, test_session):
+        """Bad UUID format -> 400 before ownership check."""
         _, key = await _make_tenant(test_session)
         async with _build_client(test_session, key) as client:
             resp = await client.post(
@@ -262,9 +286,10 @@ class TestTenantRoutes:
         app.dependency_overrides.clear()
 
     async def test_create_api_key_nonexistent_tenant(self, test_session):
-        _, key = await _make_tenant(test_session)
+        """Admin caller, well-formed but non-existent tenant_id -> 404."""
+        _, admin_key = await _make_tenant(test_session, is_admin=True)
         random_uuid = str(uuid.uuid4())
-        async with _build_client(test_session, key) as client:
+        async with _build_client(test_session, admin_key) as client:
             resp = await client.post(
                 f"/tenants/{random_uuid}/api-keys", json={"label": "x"}
             )
@@ -272,8 +297,10 @@ class TestTenantRoutes:
         app.dependency_overrides.clear()
 
     async def test_create_api_key_inactive_tenant(self, test_session):
-        inactive, key = await _make_tenant(test_session, is_active=False)
-        async with _build_client(test_session, key) as client:
+        """Admin caller targeting inactive tenant -> 404 (is_active filter)."""
+        inactive, _ = await _make_tenant(test_session, is_active=False)
+        _, admin_key = await _make_tenant(test_session, is_admin=True)
+        async with _build_client(test_session, admin_key) as client:
             resp = await client.post(
                 f"/tenants/{inactive.id}/api-keys", json={"label": "x"}
             )
@@ -294,7 +321,42 @@ class TestTenantRoutes:
         assert len(data["key"]) > 10  # secrets.token_urlsafe(32) is long
         app.dependency_overrides.clear()
 
+    async def test_create_api_key_for_other_tenant_returns_403(self, test_session):
+        """Tenant A cannot mint keys for tenant B."""
+        tenant_a, key_a = await _make_tenant(test_session, name = "A")
+        tenant_b, _ = await _make_tenant(test_session, name = "B")
+        async with _build_client(test_session, key_a) as client:
+            resp = await client.post(
+                f"/tenants/{tenant_b.id}/api-keys", json={"label": "stolen"}
+            )
+        assert resp.status_code == 403
+        app.dependency_overrides.clear()
+
+    async def test_create_api_key_as_admin_for_any_tenant(self, test_session):
+        """Admin caller can mint keys for any tenant."""
+        target, _ = await _make_tenant(test_session, name = "Target")
+        _, admin_key = await _make_tenant(test_session, name = "Admin", is_admin = True)
+        async with _build_client(test_session, admin_key) as client:
+            resp = await client.post(
+                f"/tenants/{target.id}/api-keys", json={"label": "admin-minted"}
+            )
+        assert resp.status_code == 201
+        assert resp.json()["tenant_id"] == str(target.id)
+        app.dependency_overrides.clear()
+
+    async def test_create_api_key_without_auth_returns_401(self, test_session):
+        """Anonymous POST to api-keys endpoint -> 401."""
+        tenant, _ = await _make_tenant(test_session)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                f"/tenants/{tenant.id}/api-keys", json={"label": "x"}
+            )
+        assert resp.status_code == 401
+        app.dependency_overrides.clear()
+
     async def test_list_api_keys_invalid_uuid(self, test_session):
+        """Bad UUID format -> 400 before ownership check."""
         _, key = await _make_tenant(test_session)
         async with _build_client(test_session, key) as client:
             resp = await client.get("/tenants/not-a-uuid/api-keys")
@@ -302,21 +364,38 @@ class TestTenantRoutes:
         app.dependency_overrides.clear()
 
     async def test_list_api_keys_returns_keys_for_tenant(self, test_session):
-        tenant, _ = await _make_tenant(test_session)
+        """Tenant lists its own keys."""
+        tenant, key = await _make_tenant(test_session)
         # Add two more keys to this tenant
         for label in ["k2", "k3"]:
             session_key = ApiKey(tenant_id=tenant.id, key=f"k-{label}", label=label)
             test_session.add(session_key)
         await test_session.commit()
 
-        # No auth required on this endpoint (per current implementation —
-        # which is a security finding, but we test current behavior).
-        async with _build_client(test_session, "any-key") as client:
+        async with _build_client(test_session, key) as client:
             resp = await client.get(f"/tenants/{tenant.id}/api-keys")
         assert resp.status_code == 200
         keys = resp.json()
         # The tenant has 3 keys (one from _make_tenant + two added here)
         assert len(keys) == 3
+        app.dependency_overrides.clear()
+
+    async def test_list_api_keys_for_other_tenant_returns_403(self, test_session):
+        """Tenant A cannot list tenant B's keys."""
+        _, key_a = await _make_tenant(test_session, name = "A")
+        tenant_b, _ = await _make_tenant(test_session, name = "B")
+        async with _build_client(test_session, key_a) as client:
+            resp = await client.get(f"/tenants/{tenant_b.id}/api-keys")
+        assert resp.status_code == 403
+        app.dependency_overrides.clear()
+
+    async def test_list_api_keys_without_auth_returns_401(self, test_session):
+        """Anonymous GET -> 401."""
+        tenant, _ = await _make_tenant(test_session)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get(f"/tenants/{tenant.id}/api-keys")
+        assert resp.status_code == 401
         app.dependency_overrides.clear()
 
 

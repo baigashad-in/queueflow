@@ -131,6 +131,30 @@ Click Authorize in the top right and enter your API key. Users need to create a 
 | API docs | https://queueflow.swedencentral.cloudapp.azure.com/docs |
 | Grafana | https://queueflow.swedencentral.cloudapp.azure.com:3000 |
 
+## First-time setup
+
+QueueFlow's `POST /tenants/` endpoint is gated behind admin auth. A
+fresh deployment has no admin tenant, so it must be bootstrapped before
+any HTTP onboarding can happen.
+
+```bash
+docker compose up -d
+docker compose exec api python -m scripts.bootstrap_admin --name "YourOrg"
+```
+
+The script prints a generated API key — save it, it can't be retrieved
+later. Use it as `X-API-Key` for all admin operations, including
+`POST /tenants/` to onboard further tenants.
+
+For scripted/CI deploys, pass `--key` to set a known value and
+`--idempotent` to no-op if an admin already exists:
+
+```bash
+docker compose exec api python -m scripts.bootstrap_admin \
+  --name "DefaultAdmin" \
+  --key "$QUEUEFLOW_BOOTSTRAP_KEY" \
+  --idempotent
+```
 ---
 
 ## API Reference

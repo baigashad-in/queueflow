@@ -90,28 +90,28 @@ No local Python installation required — everything runs inside Docker.
 
 1. Clone the repository
 
-git clone https://github.com/baigashad-in/queueflow.git
-cd queueflow
+    git clone https://github.com/baigashad-in/queueflow.git
+    cd queueflow
 
 2. Copy the example environment file
 
-cp .env.example .env
+    cp .env.example .env
 
 3. Build and start all services
 
-docker compose up --build
+    docker compose up --build
 
 4. Verify everything is running
 
-docker compose ps
+    docker compose ps
 
-You should see six containers running: api, worker, postgres, redis, prometheus, grafana.
+    You should see six containers running: api, worker, postgres, redis, prometheus, grafana.
 
 5. Open the API docs
 
-http://localhost:8000/docs
+    http://localhost:8000/docs
 
-Click Authorize in the top right and enter your API key. Users need to create a tenant and API key first via POST /tenants/ and POST /tenants/{id}/api-keys.
+    Click Authorize in the top right and enter your API key. Users need to create a tenant and API key first via POST /tenants/ and POST /tenants/{id}/api-keys.
 
 
 ### Local Development

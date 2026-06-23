@@ -189,6 +189,107 @@ class TestWebSocketIntegration:
                 assert received["task_id"] == "for-a"
                 assert received["tenant_id"] == a_id_str
 
+# ════════════════════════════════════════════════════════════════════
+# CSWSH guard test
+# ════════════════════════════════════════════════════════════════════
+
+class TestWebSocketCSWSH:
+    """CSWSH guards on /ws/tasks.
+    
+    Browsers attach cookies to cross-origin WebSocket handshakes without
+    enforcing same-origin policy. Without an Origin check, a victim
+    visiting evil.com while logged in to QueueFlow would have their event
+    stream hijacked: evil.com opens wss://queueflow/.../ws/tasks, the
+    browser sends the qf_session cookie, the server accepts, and evil.com
+    receives the full event stream.
+    
+    The Origin header is set by the browser, not by JavaScript - attacker
+    JS cannot spoof it. So checking Origin reliably distinguishes
+    legitimate frontends from CSWSH attempts.
+    """
+
+    def test_websocket_rejects_evil_origin(
+            self, ws_test_client, test_session_sync
+    ):
+        """Connection from a non-allowlisted Origin is closed with 4003."""
+        # Seed a valid tenant + key so we know it's the Origin check that
+        # closes us, not auth.
+        tenant = Tenant(name = "OriginVictim", is_active = True)
+        test_session_sync.add(tenant)
+        test_session_sync.commit()
+        test_session_sync.refresh(tenant)
+        api_key = ApiKey(tenant_id = tenant.id, key = "origin-victim-key", is_active = True)
+        test_session_sync.add(api_key)
+        test_session_sync.commit()
+
+        with pytest.raises(WebSocketDisconnect) as exc_info:
+            with ws_test_client.websocket_connect(
+                "/ws/tasks",
+                cookies = {"qf_session": "origin-victim-key"},
+                headers = {"origin": "https://evil.example.com"},
+            ):
+                pass
+        assert exc_info.value.code == 4003
+
+    def test_websocket_accepts_allowed_origin(
+            self, ws_test_client, test_session_sync
+    ):
+        """Connection from an allowlisted Origin proceeds to the auth check."""
+        tenant = Tenant(name = "OriginOK", is_active = True)
+        test_session_sync.add(tenant)
+        test_session_sync.commit()
+        test_session_sync.refresh(tenant)
+        api_key = ApiKey(tenant_id = tenant.id, key = "origin-ok-key", is_active = True)
+        test_session_sync.add(api_key)
+        test_session_sync.commit()
+
+        # An allowlisted Origin lets the request through to auth, which then
+        # accepts because the cookie is valid. We open and immediately close.
+        with ws_test_client.websocket_connect(
+            "/ws/tasks",
+            cookies = {"qf_session": "origin-ok-key"},
+            headers = {"origin": "http://localhost:5173"},
+        ) as ws:
+            pass # Successfully accepted
+
+    def test_websocket_accepts_missing_origin_for_non_browser_clients(
+            self, ws_test_client, test_session_sync
+    ):
+        """Permissive policy: no Origin header means non-browser client, allow.
+
+        Browsers always send Origin on cross-origin WS handshakes (per spec),
+        so absent Origin reliably indicates a non-browser tool (curl, 
+        Python websockets library). Those clients are still bound by the cookie/auth check below, so no attack surface is opened.
+        """
+        tenant = Tenant(name = "OriginAbsent", is_active = True)
+        test_session_sync.add(tenant)
+        test_session_sync.commit()
+        test_session_sync.refresh(tenant)
+        api_key = ApiKey(tenant_id = tenant.id, key = "no-origin-key", is_active = True)
+        test_session_sync.add(api_key)
+        test_session_sync.commit()
+
+        # No Origin header sent - TestClient defaults don't set on unless asked.
+        with ws_test_client.websocket_connect(
+            "/ws/tasks",
+            cookies = {"qf_session": "no-origin-key"}, 
+        ) as ws:
+            pass
+
+    def test_websocket_evil_origin_rejected_before_auth(
+            self, ws_test_client, test_session_sync
+    ):
+        """Origin check fires before auth - a bad-origin request gets 4003,
+        not 4001, even with no cookie. Order matters: the more specific
+        failure is the right diagnostic for the operator."""
+        with pytest.raises(WebSocketDisconnect) as exc_info:
+            with ws_test_client.websocket_connect(
+                "/ws/tasks",
+                headers = {"origin": "https://evil.example.com"},
+            ):
+                pass
+        assert exc_info.value.code == 4003 # Origin first, not 4001 (Unauthorized)
+
 
 # ════════════════════════════════════════════════════════════════════
 # scheduler_loop integration test

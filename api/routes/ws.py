@@ -9,6 +9,18 @@ from core.events import subscribe_to_events
 from core.db_models import ApiKey, Tenant
 
 router = APIRouter(prefix = "/ws", tags = ["WebSocket"])
+
+# Origin allowlist for /ws/tasks (CSWSH guard). Mirrors CORS in api/main.py.
+# Missing Origin is allowed: browsers always send it on cross-origin WS
+# handshakes, so absence indicates a non-browser client (curl, Python websockets library) 
+# with no cookie attack surface.
+ALLOWED_WS_ORIGINS = {
+    "http://localhost:5173",
+    "http://20.240.221.65:8000",
+    "http://20.240.221.65",
+    "https://queueflow.swedencentral.cloudapp.azure.com",
+}
+
 logger = logging.getLogger(__name__)
 
 async def get_tenant_from_cookie(websocket: WebSocket):
@@ -34,6 +46,16 @@ async def get_tenant_from_cookie(websocket: WebSocket):
 # WebSocket endpoint for real-time task updates using Redis Pub/Sub (for multi-worker setups)
 @router.websocket("/tasks")
 async def task_feed(websocket: WebSocket):
+    # CSWSH guard: reject browser handshakes from disallowed origins.
+    # Missing Origin is permissive — only browsers attach cookies cross-origin,
+    # and browsers always send Origin per spec, so absence reliably indicates
+    # a non-browser client.
+    origin = websocket.headers.get("origin")
+    if origin and origin not in ALLOWED_WS_ORIGINS:
+        logger.warning(f"WebSocket rejected: origin {origin!r} not in allowlist")
+        await websocket.close(code=4003, reason="Origin not allowed")
+        return
+    
     tenant = await get_tenant_from_cookie(websocket)
     if not tenant:
         await websocket.close(code=4001, reason="Unauthorized")

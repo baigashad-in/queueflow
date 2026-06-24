@@ -1,3 +1,17 @@
+import os
+
+# Browser CSWSH tests need the QueueFlow origin (http://127.0.0.1:18001)
+# in the WS allowlist. This MUST be set before api.routes.ws is imported,
+# because ALLOWED_WS_ORIGINS is read at module-import time. If we import api.main
+# first, ALLOWED_WS_ORIGINS gets the defaults frozen in without our test origin.
+os.environ["QUEUEFLOW_WS_ALLOWED_ORIGINS"] = ",".join([
+    "http://localhost:5173",
+    "http://20.240.221.65:8000",
+    "http://20.240.221.65",
+    "https://queueflow.swedencentral.cloudapp.azure.com",
+    "http://127.0.0.1:18001",
+])
+
 import pytest
 
 from httpx import AsyncClient, ASGITransport
@@ -10,6 +24,7 @@ from core.db_models import Tenant, ApiKey
 from core.config import settings
 from api.main import app
 import fakeredis.aioredis
+
 TEST_DATABASE_URL = settings.database_url
 
 @pytest.fixture(scope="function") 
@@ -69,16 +84,24 @@ async def client(test_session, test_tenant):
     app.dependency_overrides.clear()
 
 @pytest.fixture(autouse=True)
-async def fake_redis(monkeypatch):
+def fake_redis(monkeypatch, request):
     """
-    Replace the real Redis client with an in-memory fake for the duration of one test.
- 
-    This monkeypatches `core.queue.redis_client` so that everything that imports
-    redis_client from there (core.lock, core.dlq, core.scheduler, core.events,
-    worker.heartbeat) transparently uses the fake.
- 
-    Each test gets a fresh fake — no state leaks between tests.
+    Replace Redis with an in-memory fake — sync gate around the async impl.
+
+    Browser tests use real Redis (via uvicorn-served app); non-browser tests
+    get the fake. Sync gate so pytest-asyncio doesn't try to schedule us on
+    a loop before the marker check.
     """
+    if request.node.get_closest_marker("browser"):
+        yield None
+        return
+
+    # For non-browser tests, defer to the async implementation
+    yield request.getfixturevalue("_fake_redis_impl")
+
+@pytest.fixture
+async def _fake_redis_impl(monkeypatch):
+    """The actual async fake-redis setup. Activated by the sync gate above."""    
     fake = fakeredis.aioredis.FakeRedis(decode_responses=True)
  
     # Patch every module that imports redis_client.
@@ -128,7 +151,7 @@ def test_session_sync(engine):
 
 
 @pytest.fixture(autouse=True)
-async def _override_api_session(engine):
+def _override_api_session(request):
     """Override get_api_session for every test.
 
     httpx.ASGITransport does not run FastAPI's lifespan events, so
@@ -139,7 +162,18 @@ async def _override_api_session(engine):
     Per-call (not yielding a shared session) avoids 'another operation
     in progress' errors when multiple Depends(get_api_session) resolve
     within a single request.
+
+    Skipped for tests marked @pytest.mark.browser — those go through real
+    uvicorn (which runs the production lifespan with its own engine), so
+    the dependency override mechanism is bypassed entirely.
     """
+    if request.node.get_closest_marker("browser"):
+        yield
+        return
+    
+    # Resolve engine fixture only for non-browser tests
+    engine = request.getfixturevalue("engine")
+
     from api.main import app
     from core.database import get_api_session, build_sessionmaker
 
@@ -179,3 +213,130 @@ def ws_test_client(monkeypatch, engine):
 
     with TestClient(app) as client:
         yield client
+
+
+@pytest.fixture(scope = "session")
+def queueflow_server():
+    """Run uvicorn on a real port so areal browser can talk to QueueFlow.
+    
+    The unit-test suite uses ASGITransport (in-process, not network-visible).
+    Playwright drives a real browser and needs a network-addressable target,
+    so we spin up uvicorn here for the test session. Bound to localhost only;
+    not exposed outside the container.
+    """
+    import threading
+    import time
+    import socket
+    import uvicorn
+    from api.main import app
+
+    config = uvicorn.Config(app, host = "127.0.0.1", port = 18001, log_level = "warning")
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target = server.run, daemon = True)
+    thread.start()
+
+    # Poll until uvicorn accepts connections (max ~5s)
+    for _ in range(50):
+        try:
+            with socket.create_connection(("127.0.0.1", 18001), timeout = 0.2):
+                break
+        except OSError:
+            time.sleep(0.1)
+    else:
+        raise RuntimeError("queueflow_server did not come up in time")
+    
+    yield "http://127.0.0.1:18001"
+    server.should_exit = True
+    thread.join(timeout=5)  # let uvicorn actually shut down before next session
+
+@pytest.fixture(scope = "session")
+def attacker_server(tmp_path_factory):
+    """Serve an attacker HTML page from a different origin (different port).
+    
+    Used by CSWSH browser tests: the page contains JS that opens a WS to
+    QueueFlow. Different port means different origin, which triggers the 
+    cross-origin Origin header from Chromium.
+    """
+
+    import http.server
+    import socketserver
+    import threading
+    import time
+    import socket
+
+    attacker_dir = tmp_path_factory.mktemp("attacker_origin")
+    (attacker_dir / "evil.html").write_text(
+        """
+        <!doctype html>
+        <html>
+            <body>
+                <script>
+                    window.attackResult = new Promise((resolve) => {
+                    const ws = new WebSocket("ws://127.0.0.1:18001/ws/tasks");
+                    ws.onopen = () => resolve({outcome: "connected"});
+                    ws.onclose = (e) => resolve({outcome: "closed", code: e.code, reason: e.reason});
+                    ws.onerror = () => resolve({outcome: "error"});
+                    setTimeout(() => resolve({outcome: "timeout"}), 5000);
+                    });
+                </script>
+            </body>
+        </html>
+        """
+    )
+
+    class Handler(http.server.SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, directory=str(attacker_dir), **kwargs)
+        def log_message(self, *args, **kwargs):
+            pass  # silence access log noise
+
+    # Subclass with allow_reuse address so TIME_WAIT sockets from prior
+    # test runs don't block rebinding to 18002.
+    class ReusableTCPServer(socketserver.TCPServer):
+        allow_reuse_address = True
+
+    
+    httpd = ReusableTCPServer(("127.0.0.1", 18002), Handler)
+    thread = threading.Thread(target = httpd.serve_forever, daemon = True)
+    thread.start()
+
+    for _ in range(20):
+        try:
+            with socket.create_connection(("127.0.0.1", 18002), timeout = 0.2):
+                break
+        except OSError:
+            time.sleep(0.1)
+
+    yield "http://127.0.0.1:18002"
+    httpd.shutdown()
+    httpd.server_close()  # actually release the socket
+
+
+@pytest.fixture(scope="session")
+def browser_test_db_engine():
+    """Sync DB engine for browser tests.
+
+    Browser tests are synchronous (Playwright sync API). They cannot
+    depend on the async `engine` fixture without triggering pytest-asyncio
+    loop conflicts. This fixture creates a sync engine directly and
+    ensures the schema exists. Tables persist for the whole test session
+    (no per-test teardown).
+    """
+    from core.config import settings
+    sync_url = settings.database_url.replace("+asyncpg", "")
+    sync_engine = create_engine(sync_url)
+    # Schema is created by the queueflow_server fixture's lifespan, so
+    # we don't run create_all here — just verify connection works.
+    yield sync_engine
+    sync_engine.dispose()
+
+
+@pytest.fixture
+def browser_test_session(browser_test_db_engine):
+    """Sync session for seeding rows in browser tests."""
+    SessionLocal = sessionmaker(bind=browser_test_db_engine, expire_on_commit=False)
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()

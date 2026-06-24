@@ -276,14 +276,27 @@ Response (200 OK):
 
 Tests run inside the API container against the PostgreSQL database.
 
-Run all tests:
-docker compose exec api pytest
+```bash
+# Full suite (includes browser-based CSWSH tests, ~90s)
+docker compose exec api pytest tests/ -q
 
-Run with verbose output:
-docker compose exec api pytest -v
+# Skip browser tests (faster, ~65s)
+docker compose exec api pytest tests/ -m "not browser" -q
 
-Run a specific file:
+# Only browser tests
+docker compose exec api pytest tests/ -m browser -v
+
+# Run a specific file
 docker compose exec api pytest tests/test_api.py
+```
+
+Browser tests use Playwright with headless Chromium and run by default.
+The Docker image installs Chromium automatically. To run tests outside
+Docker:
+
+```bash
+playwright install --with-deps chromium
+```
 
 The test suite covers:
 - All API endpoints (submit, list, get, cancel, lifecycle, tenant)
@@ -291,6 +304,7 @@ The test suite covers:
 - Validation (invalid task name, invalid UUID)
 - Task handlers (dispatch, unknown handler)
 - Schema validation (task names, priorities, defaults)
+- Security: SSRF guards on worker callbacks, auth on api-keys routes, CSWSH on WebSocket (real-browser test via Playwright)
 
 
 

@@ -1,6 +1,7 @@
 import json
 import logging
 import asyncio
+import os
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
@@ -14,11 +15,19 @@ router = APIRouter(prefix = "/ws", tags = ["WebSocket"])
 # Missing Origin is allowed: browsers always send it on cross-origin WS
 # handshakes, so absence indicates a non-browser client (curl, Python websockets library) 
 # with no cookie attack surface.
-ALLOWED_WS_ORIGINS = {
+
+# Configurable via QUEUEFLOW_WS_ALLOWED_ORIGINS env var (comma-separated).
+# Defaults below cover dev + the Azure prod deployment.
+_DEFAULT_ALLOWED_ORIGINS = ",".join([
     "http://localhost:5173",
     "http://20.240.221.65:8000",
     "http://20.240.221.65",
     "https://queueflow.swedencentral.cloudapp.azure.com",
+])
+ALLOWED_WS_ORIGINS = {
+    o.strip()
+    for o in os.environ.get("QUEUEFLOW_WS_ALLOWED_ORIGINS", _DEFAULT_ALLOWED_ORIGINS).split(",")
+    if o.strip()
 }
 
 logger = logging.getLogger(__name__)

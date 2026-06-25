@@ -171,3 +171,27 @@ async def test_submit_task_with_max_retries(client):
 
     assert response.json()["max_retries"] == 0 # The task should be created with the specified max_retries value
 
+async def test_serve_dashboard_blocks_path_traversal(client):
+    """Path traversal attempts get 403, not file contents."""
+    resp = await client.get("/dashboard/%2E%2E/%2E%2E/api/main.py")
+    assert resp.status_code == 403
+
+
+async def test_serve_dashboard_serves_index_at_root(client, tmp_path, monkeypatch):
+    """Legitimate dashboard request returns the SPA index.
+    
+    The test container doesn't ship a built React bundle, so we create
+    a fake index.html and point the route's DASHBOARD_DIR at it for the 
+    duration of this test. The route logic is what's being verified;
+    file contents are irrelevant to the test.
+    """
+    fake_dashboard = tmp_path / "dashboard"
+    fake_dashboard.mkdir()
+    (fake_dashboard / "index.html").write_text("<html>fake spa</html>")
+
+    from api import main as api_main
+    monkeypatch.setattr(api_main, "DASHBOARD_DIR", fake_dashboard.resolve())
+
+    resp = await client.get("/dashboard/")
+    assert resp.status_code == 200
+    assert b"fake spa" in resp.content

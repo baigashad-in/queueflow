@@ -1,5 +1,6 @@
 import logging
 import os
+import pathlib
 
 from contextlib import asynccontextmanager
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
@@ -8,7 +9,7 @@ import core.metrics
 from core.config import settings
 from core.database import build_engine, build_sessionmaker, Base
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import Response, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,6 +29,8 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+DASHBOARD_DIR = pathlib.Path("static/dashboard").resolve()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -89,11 +92,33 @@ app.add_middleware(RequestIDMiddleware)
 # Serve the React dashboard
 @app.get("/dashboard/{path:path}")
 @app.get("/dashboard")
-async def serve_dashboard(path: str = ""):
-    file_path = f"static/dashboard/{path}"
-    if os.path.isfile(file_path):
-        return FileResponse(file_path)
-    return FileResponse("static/dashboard/index.html")
+async def serve_dashboard(request: Request, path: str = ""):
+    """Serve the REact SPA. Paths are confined to static/dashboard;
+    traversal attempts get a 403 and a warning log so threat-detection
+    tooling can pick them up."""
+    index_file = DASHBOARD_DIR / "index.html"
+
+    if not path:
+        return FileResponse(index_file)
+    
+    # Resolve the requested path with `..` segments collapsed.
+    requested = (DASHBOARD_DIR / path).resolve()
+
+    # Boundary check: the resolved path must stay inside DASHBOARD_DIR.
+
+    if not requested.is_relative_to(DASHBOARD_DIR):
+        client_ip = request.client.host if request.client else "unknown"
+        logger.warning(
+            f"Path traversal attempt blocked from {client_ip}: "
+            f"requested path {path!r}"
+        )
+        raise HTTPException(status_code = 403, detail = "Not allowed")
+    
+    if requested.is_file():
+        return FileResponse(requested)
+    
+    # SPA fallback for unknown but in-bounds paths (e.g. /dashboard/tasks/123)
+    return FileResponse(index_file)
 
 
 # After the app is created, we can mount the static directory

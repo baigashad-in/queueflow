@@ -53,51 +53,52 @@ class TestMetricsEndpoint:
  
 class TestDashboardServing:
     """The /dashboard route serves the React SPA. It falls back to index.html
-    for any path not matching a real file (so React Router can handle the URL)."""
+    for any path not matching a real file (so React Router can handle the
+    URLs client-side). Tests monkeypatch DASHBOARD_DIR to a temp directory
+    because the test image doesn't ship a built React bundle"""
  
     async def test_dashboard_root_returns_index(self, client, tmp_path, monkeypatch):
         """Hitting /dashboard with no path should serve index.html."""
-        # Build a fake static/dashboard/index.html in tmp_path so the test
-        # doesn't depend on the production frontend build
-        static_dir = tmp_path / "static" / "dashboard"
-        static_dir.mkdir(parents=True)
-        index = static_dir / "index.html"
-        index.write_text("<html>QueueFlow</html>")
- 
-        # Change cwd so the relative path "static/dashboard/index.html" resolves
-        monkeypatch.chdir(tmp_path)
+        fake_dashboard = tmp_path / "dashboard"
+        fake_dashboard.mkdir()
+        (fake_dashboard / "index.html").write_text("<html>QueueFlow</html>")
+
+        from api import main as api_main
+        monkeypatch.setattr(api_main, "DASHBOARD_DIR", fake_dashboard.resolve())
  
         resp = await client.get("/dashboard")
         assert resp.status_code == 200
-        assert "QueueFlow" in resp.text
+        assert b"QueueFlow" in resp.content
  
     async def test_dashboard_serves_existing_file_directly(self, client, tmp_path, monkeypatch):
         """If the requested path exists as a real file, serve it (not index.html)."""
-        static_dir = tmp_path / "static" / "dashboard"
-        static_dir.mkdir(parents=True)
-        (static_dir / "index.html").write_text("<html>index</html>")
-        (static_dir / "app.js").write_text("console.log('hello');")
+        fake_dashboard = tmp_path / "dashboard"
+        fake_dashboard.mkdir()
+        (fake_dashboard / "index.html").write_text("<html>index</html>")
+        (fake_dashboard / "app.js").write_text("console.log('hello');")
  
-        monkeypatch.chdir(tmp_path)
+        from api import main as api_main
+        monkeypatch.setattr(api_main, "DASHBOARD_DIR", fake_dashboard.resolve())
  
         resp = await client.get("/dashboard/app.js")
         assert resp.status_code == 200
-        assert "console.log" in resp.text
+        assert b"console.log" in resp.content
  
     async def test_dashboard_unknown_path_falls_back_to_index(
         self, client, tmp_path, monkeypatch
     ):
         """Routes like /dashboard/tasks/abc should serve index.html so React
         Router can handle them client-side."""
-        static_dir = tmp_path / "static" / "dashboard"
-        static_dir.mkdir(parents=True)
-        (static_dir / "index.html").write_text("<html>index</html>")
+        fake_dashboard = tmp_path / "dashboard"
+        fake_dashboard.mkdir()
+        (fake_dashboard / "index.html").write_text("<html>index</html>")
  
-        monkeypatch.chdir(tmp_path)
+        from api import main as api_main
+        monkeypatch.setattr(api_main, "DASHBOARD_DIR", fake_dashboard.resolve())
  
         resp = await client.get("/dashboard/some/deep/spa/route")
         assert resp.status_code == 200
-        assert "<html>index</html>" in resp.text
+        assert b"index" in resp.content
  
  
 # ════════════════════════════════════════════════════════════════════

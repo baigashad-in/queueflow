@@ -1,4 +1,3 @@
-import secrets
 import uuid
 
 from sqlalchemy import Column, Integer, String, DateTime, Text, JSON, Boolean, ForeignKey
@@ -12,9 +11,9 @@ class Tenant(Base):
     """Represents a customer/organization in a multi-tenant setup."""
     __tablename__ = "tenants"
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(String(255), unique=True, nullable=False)
+    name = Column(String(255), unique = True, nullable = False)
     is_active = Column(Boolean, default = True)
-    created_at = Column(DateTime(timezone=True), nullable=False, default = lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone = True), nullable = False, default = lambda: datetime.now(timezone.utc))
     is_admin = Column(Boolean, default = False)  # Flag to indicate if this tenant has admin privileges
     
     def __repr__(self):
@@ -22,17 +21,24 @@ class Tenant(Base):
 
 
 class ApiKey(Base):
-    """Represents an API key for authentication."""
+    """Represents an API key for authentication.
+    
+    Storage: only the prefix (for O(1) lookup) and bcrypt key_hash are kept.
+    The full cleartext key is shown to the user ONCE at creation via
+    core.key_utils.generate_api_key() and is never recoverable from the DB.
+    """
     __tablename__ = "api_keys"
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
-    key = Column(String(255), unique=True, nullable=False, default=lambda: secrets.token_urlsafe(32))
-    label = Column(String(255), nullable=True)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime(timezone=True), nullable=False, default = lambda: datetime.now(timezone.utc))
+    id = Column(PGUUID(as_uuid = True), primary_key = True, default = uuid.uuid4)
+    tenant_id = Column(PGUUID(as_uuid = True), ForeignKey("tenants.id"), nullable = False)
+    prefix = Column(String(8), unique = True, nullable = False, index = True)
+    key_hash = Column(String(60), nullable = False)
+    label = Column(String(255), nullable = True)
+    is_active = Column(Boolean, default = True)
+    created_at = Column(DateTime(timezone = True), nullable=False, default = lambda: datetime.now(timezone.utc))
 
     def __repr__(self):
-        return f"<ApiKey {self.label} tenant = {self.tenant_id}>"
+        label_part = f" label = {self.label}" if self.label else ""
+        return f"<ApiKey prefix = {self.prefix}{label_part} tenant = {self.tenant_id}>"
     
     
 class TaskRecord(Base):
@@ -41,38 +47,38 @@ class TaskRecord(Base):
     id = Column(PGUUID(as_uuid=True), primary_key = True, default=uuid.uuid4)
 
     # What to run
-    task_name = Column(String(255), nullable=False, index=True)
-    payload = Column(JSON, nullable=False, default=dict)
+    task_name = Column(String(255), nullable = False, index = True)
+    payload = Column(JSON, nullable = False, default = dict)
 
     # Priority(higher number = more urgent)
-    priority = Column(Integer, nullable=False, default=5)
+    priority = Column(Integer, nullable = False, default = 5)
 
     # Lifecycle
     status = Column(String(50), nullable = False, default = "pending", index = True)
 
     # Retry tracking
-    max_retries = Column(Integer, nullable=False, default = 3)
-    retry_count = Column(Integer, nullable=False, default = 0)
+    max_retries = Column(Integer, nullable = False, default = 3)
+    retry_count = Column(Integer, nullable = False, default = 0)
 
     # Results
     max_results = Column(JSON, nullable = True)
-    error_message = Column(Text, nullable=True)
+    error_message = Column(Text, nullable = True)
 
     # Timestamps
-    created_at = Column(DateTime(timezone=True), nullable=False, default = lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), nullable = False, default= lambda: datetime.now(timezone.utc), onupdate = lambda: datetime.now(timezone.utc))
-    started_at = Column(DateTime(timezone= True), nullable=True)
-    completed_at = Column(DateTime(timezone= True), nullable = True)
+    created_at = Column(DateTime(timezone = True), nullable=False, default = lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone = True), nullable = False, default= lambda: datetime.now(timezone.utc), onupdate = lambda: datetime.now(timezone.utc))
+    started_at = Column(DateTime(timezone = True), nullable = True)
+    completed_at = Column(DateTime(timezone = True), nullable = True)
 
     # Auto-incrementing task number for easier human reference (not used for ordering)
     task_number_seq = Sequence("task_number_seq")
-    task_number = Column(Integer, task_number_seq, server_default=task_number_seq.next_value(), unique=True, nullable=False)
+    task_number = Column(Integer, task_number_seq, server_default = task_number_seq.next_value(), unique = True, nullable = False)
 
     # Foreign key to Tenant for multi-tenancy support (optional)
-    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True, index=True)
+    tenant_id = Column(PGUUID(as_uuid = True), ForeignKey("tenants.id"), nullable = True, index = True)
 
     # Optional callback URL to notify when task is completed (for async processing)
-    callback_url = Column(String(2048), nullable=True)
+    callback_url = Column(String(2048), nullable = True)
 
 
     def __repr__(self):

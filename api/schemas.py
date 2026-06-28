@@ -48,8 +48,6 @@ class TaskSubmitRequest(BaseModel):
         description = "URL to receive a POST when the task completes or dies."
     )
 
-
-
     @field_validator("task_name")
     @classmethod
     def task_name_no_spaces(cls, v: str) -> str:
@@ -90,6 +88,7 @@ class TaskListResponse(BaseModel):
 class TenantCreateRequest(BaseModel):
     name: str = Field(..., min_length = 1, max_length = 255)
 
+
 class TenantResponse(BaseModel):
     id: UUID
     name: str
@@ -102,9 +101,29 @@ class ApiKeyCreateRequest(BaseModel):
     label: str = Field(default = None, max_length = 255)
 
 class ApiKeyResponse(BaseModel):
+    """
+    Read-only key info. Returned by GET /tenants/{id}/api-keys.
+    The cleartext secret is NEVER included - it's only available 
+    once, at creation time, via ApiKeyCreateResponse."""
     id: UUID
     tenant_id: UUID
-    key: str
+    prefix: str
+    label: str | None
+    is_active: bool
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+
+class ApiKeyCreateResponse(BaseModel):
+    """
+    One-time response containing the full cleartext key. Returned ONLY
+    from POST /tenants/{id}/api-keys at creation. The caller must save the
+    key value immediately — it's not recoverable from any subsequent read.
+    """
+    id: UUID
+    tenant_id: UUID
+    prefix: str
+    key: str  # full cleartext, shown ONCE at creation
     label: str | None
     is_active: bool
     created_at: datetime

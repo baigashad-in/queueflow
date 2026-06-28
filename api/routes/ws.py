@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from core.events import subscribe_to_events
 from core.db_models import ApiKey, Tenant
+from core.key_utils import parse_api_key, verify_api_key
 
 router = APIRouter(prefix = "/ws", tags = ["WebSocket"])
 
@@ -33,18 +34,28 @@ ALLOWED_WS_ORIGINS = {
 logger = logging.getLogger(__name__)
 
 async def get_tenant_from_cookie(websocket: WebSocket):
-    """Extract tenant from the session cookie."""
+    """Extract tenant from the session cookie.
+    
+    Same prefix-lookup + bcrypt-verify flow as the HTTP auth dependency.
+    Returns None for any failure mode so the caller can issue a generic
+    4001 close.
+    """
     cookie = websocket.cookies.get("qf_session")
     if not cookie:
         return None
     
+    parsed = parse_api_key(cookie)
+    if not parsed:
+        return None
+    prefix, _secret = parsed
+
     SessionLocal = websocket.app.state.SessionLocal
     async with SessionLocal() as session:
         result = await session.execute(
-            select(ApiKey).where(ApiKey.key == cookie, ApiKey.is_active == True)
+            select(ApiKey).where(ApiKey.prefix == prefix, ApiKey.is_active == True)
         )
         api_key = result.scalar_one_or_none()
-        if not api_key:
+        if not api_key or not verify_api_key(cookie, api_key.key_hash):
             return None
         
         tenant_result = await session.execute(

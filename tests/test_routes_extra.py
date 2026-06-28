@@ -12,14 +12,15 @@ from httpx import AsyncClient, ASGITransport
 from api.main import app
 from core.db_models import ApiKey, Tenant, TaskRecord
 from core.models import TaskStatus
+from core.key_utils import generate_api_key
 
 
 # ────────────────────────────────────────────────────────────────────
 # Helpers
 # ────────────────────────────────────────────────────────────────────
 
-async def _make_tenant(session, name=None, is_admin=False, is_active=True, key=None):
-    """Create a tenant + API key. Returns (tenant, api_key_string)."""
+async def _make_tenant(session, name = None, is_admin = False, is_active = True):
+    """Create a tenant + API key. Returns (tenant, cleartext_key)."""
     tenant = Tenant(
         name=name or f"T-{uuid.uuid4().hex[:8]}",
         is_admin=is_admin,
@@ -29,15 +30,17 @@ async def _make_tenant(session, name=None, is_admin=False, is_active=True, key=N
     await session.commit()
     await session.refresh(tenant)
 
+    full_key, prefix, key_hash = generate_api_key()
     api_key = ApiKey(
         tenant_id=tenant.id,
-        key=key or f"key-{uuid.uuid4().hex[:16]}",
+        prefix=prefix,
+        key_hash=key_hash,
         is_active=True,
     )
     session.add(api_key)
     await session.commit()
     await session.refresh(api_key)
-    return tenant, api_key.key
+    return tenant, full_key
 
 
 def _build_client(session, api_key):
@@ -368,7 +371,8 @@ class TestTenantRoutes:
         tenant, key = await _make_tenant(test_session)
         # Add two more keys to this tenant
         for label in ["k2", "k3"]:
-            session_key = ApiKey(tenant_id=tenant.id, key=f"k-{label}", label=label)
+            full_key, prefix, key_hash = generate_api_key()
+            session_key = ApiKey(tenant_id = tenant.id, prefix=prefix, key_hash=key_hash, label = label)
             test_session.add(session_key)
         await test_session.commit()
 

@@ -1,10 +1,12 @@
 from fastapi import APIRouter, HTTPException, Response
 from fastapi import Depends
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from core.database import get_api_session
 from core.db_models import ApiKey, Tenant 
+from core.key_utils import parse_api_key, verify_api_key
 
 router = APIRouter(prefix = "/auth", tags = ["Auth"])
 
@@ -14,16 +16,26 @@ async def login(
     body: dict,
     session: AsyncSession = Depends(get_api_session),
 ):
-    """Validate an API key and set an HTTP-only cookie."""
+    """Validate an API key and set an HTTP-only cookie.
+    
+    Same prefix-lookup + bcrypt-verify flow as get_current_tenant. The
+    cookie stores the full cleartext key; subsequent requests are
+    authenticated by reading the cookie through get_current_tenant.
+    """
     key = body.get("api_key", "")
     if not key:
         raise HTTPException(status_code = 400, detail = "api_key is required.")
     
+    parsed = parse_api_key(key)
+    if not parsed:
+        raise HTTPException(status_code = 401, detail = "Invalid API key.")
+    prefix, _secret = parsed
+
     result = await session.execute(
-        select(ApiKey).where(ApiKey.key == key, ApiKey.is_active == True)
+        select(ApiKey).where(ApiKey.prefix == prefix, ApiKey.is_active == True)
     )
     api_key_record = result.scalar_one_or_none()
-    if not api_key_record:
+    if not api_key_record or not verify_api_key(key, api_key_record.key_hash):
         raise HTTPException(status_code = 401, detail = "Invalid API key.")
     
     tenant_result = await session.execute(
@@ -31,7 +43,7 @@ async def login(
     )
     tenant = tenant_result.scalar_one_or_none()
     if not tenant:
-        raise HTTPException(status_code = 401, detail = "tenant not found or inactive.")
+        raise HTTPException(status_code = 401, detail = "Tenant not found or inactive.")
     
     # Set HTTP-only cookie with the API key
     response.set_cookie(
@@ -50,4 +62,3 @@ async def logout(response: Response):
     """Clear the session cookie."""
     response.delete_cookie("qf_session")
     return {"message": "Logged out"}
-

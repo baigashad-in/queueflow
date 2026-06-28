@@ -12,11 +12,13 @@ Optional:
                     Useful for scripted/reproducible deploys.
     --idempotent    Exit cleanly if an admin tenant already exists,
                     without creating duplicates.
+
+The generated API key is printed to stdout ONCE. It cannot be recovered
+afterwards — only its prefix + bcrypt hash are stored.
 """
 
 import argparse
 import asyncio
-import secrets
 import sys
 
 from sqlalchemy import select
@@ -24,9 +26,9 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 
 from core.config import settings
 from core.db_models import Tenant, ApiKey
+from core.key_utils import generate_api_key
 
-
-async def main(name: str, key: str | None, idempotent: bool) -> int:
+async def main(name: str, idempotent: bool) -> int:
     engine = create_async_engine(settings.database_url)
     try:
         async with AsyncSession(engine) as session:
@@ -57,10 +59,11 @@ async def main(name: str, key: str | None, idempotent: bool) -> int:
             await session.flush()
             await session.refresh(tenant)
 
-            api_key_value = key or secrets.token_urlsafe(32)
+            full_key, prefix, key_hash = generate_api_key()
             api_key = ApiKey(
                 tenant_id = tenant.id,
-                key = api_key_value,
+                prefix = prefix,
+                key_hash = key_hash,
                 label = "bootstrap",
                 is_active = True,
             )
@@ -80,12 +83,14 @@ async def main(name: str, key: str | None, idempotent: bool) -> int:
             print("Admin tenant created.")
             print(f" Name:      {tenant_name}")
             print(f" Tenant ID: {tenant_id_str}")
-            print(f" API Key:   {api_key_value}")
+            print(f" Prefix:    {prefix}")
+            print(f" API Key:   {full_key}")
             print("=" * 60)
             print(
                 "Store this API key now - it cannot be retrieved later. "
-                "Use it as X-API-Key for all admin operations.",
-                file = sys.stderr
+                "Only the prefix and bcrypt hash are persisted in the database. "
+                "Use the full key as X-API-Key for all admin operations.",
+                file = sys.stderr,
             )
             return 0
     finally:
@@ -94,11 +99,10 @@ async def main(name: str, key: str | None, idempotent: bool) -> int:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description = __doc__.split("\n\n")[0])
     parser.add_argument("--name", required = True, help = "Admin tenant display name")
-    parser.add_argument("--key", default = None, help = "Optional fixed API key value")
     parser.add_argument(
         "--idempotent",
         action = "store_true",
         help = "Exit cleanly if an admin tenant already exists",
     )
     args = parser.parse_args()
-    sys.exit(asyncio.run(main(args.name, args.key, args.idempotent)))
+    sys.exit(asyncio.run(main(args.name, args.idempotent)))

@@ -20,6 +20,7 @@ import pytest
 from playwright.sync_api import sync_playwright
 
 from core.db_models import Tenant, ApiKey
+from core.key_utils import generate_api_key
 
 pytestmark = pytest.mark.browser
 
@@ -43,10 +44,12 @@ def test_cswsh_attack_is_blocked_in_real_browser(
     browser_test_session.add(tenant)
     browser_test_session.commit()
     browser_test_session.refresh(tenant)
+    full_key, prefix, key_hash = generate_api_key()
     api_key = ApiKey(
-        tenant_id = tenant.id, 
-        key = f"victim-session-key-{suffix}", 
-        is_active = True,
+        tenant_id=tenant.id,
+        prefix=prefix,
+        key_hash=key_hash,
+        is_active=True,
     )
     browser_test_session.add(api_key)
     browser_test_session.commit()
@@ -55,7 +58,7 @@ def test_cswsh_attack_is_blocked_in_real_browser(
     # Chromium's jar for the QueueFlow origin.
     browser_context.add_cookies([{
         "name": "qf_session",
-        "value": f"victim-session-key-{suffix}",
+        "value": full_key,
         "url": queueflow_server,
         "sameSite": "Lax",
     }])
@@ -96,17 +99,19 @@ def test_same_origin_websocket_still_works_in_real_browser(
     browser_test_session.add(tenant)
     browser_test_session.commit()
     browser_test_session.refresh(tenant)
+    full_key, prefix, key_hash = generate_api_key()
     api_key = ApiKey(
-        tenant_id = tenant.id, 
-        key = f"legit-session-key-{suffix}", 
-        is_active = True,
+        tenant_id=tenant.id,
+        prefix=prefix,
+        key_hash=key_hash,
+        is_active=True,
     )
     browser_test_session.add(api_key)
     browser_test_session.commit()
 
     browser_context.add_cookies([{
         "name": "qf_session",
-        "value": f"legit-session-key-{suffix}",
+        "value": full_key,
         "url": queueflow_server,
         "sameSite": "Lax",
     }])

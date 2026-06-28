@@ -2,9 +2,9 @@
 Tests for trivial endpoints and __repr__ methods.
 
 """
-import os
 import pytest
-import uuid
+
+from core.key_utils import generate_api_key
 
 # ════════════════════════════════════════════════════════════════════
 # api/main.py — /health, /metrics, /dashboard
@@ -136,7 +136,8 @@ class TestModelRepr:
         await test_session.commit()
         await test_session.refresh(tenant)
  
-        key = ApiKey(tenant_id=tenant.id, key="r-key", label="primary")
+        full_key, prefix, key_hash = generate_api_key()
+        key = ApiKey(tenant_id=tenant.id, prefix=prefix, key_hash=key_hash, label="primary")
         test_session.add(key)
         await test_session.commit()
  

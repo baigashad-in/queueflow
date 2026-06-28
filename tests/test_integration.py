@@ -22,24 +22,24 @@ from api.main import app
 
 from core.db_models import ApiKey, Tenant, TaskRecord
 from core.models import TaskStatus
-
+from core.key_utils import generate_api_key
 
 # ════════════════════════════════════════════════════════════════════
 # Helpers
 # ════════════════════════════════════════════════════════════════════
 
-async def _make_tenant_with_key(session, key="test-ws-key"):
-    """Create a tenant + an API key with a known value. Returns the tenant."""
-    tenant = Tenant(name=f"WSTenant-{uuid.uuid4().hex[:8]}", is_active=True)
+async def _make_tenant_with_key(session):
+    """Create a tenant + an API key. Returns (tenant, cleartext_key)."""
+    tenant = Tenant(name = f"WSTenant-{uuid.uuid4().hex[:8]}", is_active = True)
     session.add(tenant)
     await session.commit()
     await session.refresh(tenant)
 
-    api_key = ApiKey(tenant_id=tenant.id, key=key, is_active=True)
+    full_key, prefix, key_hash = generate_api_key()
+    api_key = ApiKey(tenant_id=tenant.id, prefix=prefix, key_hash=key_hash, is_active=True)
     session.add(api_key)
     await session.commit()
-    return tenant
-
+    return tenant, full_key
 
 def _make_event_generator(events):
     """Create an async generator that yields the given events then stops.
@@ -75,7 +75,6 @@ import pytest
 from unittest.mock import patch
 from starlette.websockets import WebSocketDisconnect
 
-
 def _make_event_generator(events):
     """Build an async generator function that yields the given events."""
     async def _gen():
@@ -83,7 +82,6 @@ def _make_event_generator(events):
             yield event
             await asyncio.sleep(0.01)
     return _gen
-
 
 class TestWebSocketIntegration:
     """End-to-end tests for the /ws/tasks WebSocket route."""
@@ -112,12 +110,13 @@ class TestWebSocketIntegration:
         test_session_sync.commit()
         test_session_sync.refresh(tenant)
 
-        api_key = ApiKey(tenant_id = tenant.id, key = "inactive-key", is_active = True)
+        full_key, prefix, key_hash = generate_api_key()
+        api_key = ApiKey(tenant_id=tenant.id, prefix=prefix, key_hash=key_hash, is_active=True)
         test_session_sync.add(api_key)
         test_session_sync.commit()
 
-
-        ws_test_client.cookies.set("qf_session", "inactive-key")
+        ws_test_client.cookies.set("qf_session", full_key)
+        
         with pytest.raises(WebSocketDisconnect) as exc:
             with ws_test_client.websocket_connect("/ws/tasks") as ws:
                 ws.receive_text()
@@ -132,7 +131,8 @@ class TestWebSocketIntegration:
         test_session_sync.commit()
         test_session_sync.refresh(tenant)
 
-        api_key = ApiKey(tenant_id = tenant.id, key = "valid-key", is_active = True)
+        full_key, prefix, key_hash = generate_api_key()
+        api_key = ApiKey(tenant_id=tenant.id, prefix=prefix, key_hash=key_hash, is_active=True)
         test_session_sync.add(api_key)
         test_session_sync.commit()
 
@@ -148,7 +148,7 @@ class TestWebSocketIntegration:
 
         import api.routes.ws as ws_module
         with patch.object(ws_module, "subscribe_to_events", _make_event_generator(events)):
-            ws_test_client.cookies.set("qf_session", "valid-key")
+            ws_test_client.cookies.set("qf_session", full_key)
             with ws_test_client.websocket_connect("/ws/tasks") as ws:
                 received = ws.receive_json()
                 assert received["task_id"] == "task-1"
@@ -167,7 +167,8 @@ class TestWebSocketIntegration:
         test_session_sync.commit()
         test_session_sync.refresh(tenant_a)
 
-        api_key = ApiKey(tenant_id = tenant_a.id, key="key-a", is_active=True)
+        full_key, prefix, key_hash = generate_api_key()
+        api_key = ApiKey(tenant_id=tenant_a.id, prefix=prefix, key_hash=key_hash, is_active=True)
         test_session_sync.add(api_key)
         test_session_sync.commit()
 
@@ -183,7 +184,7 @@ class TestWebSocketIntegration:
 
         import api.routes.ws as ws_module
         with patch.object(ws_module, "subscribe_to_events", _make_event_generator(events)):
-            ws_test_client.cookies.set("qf_session", "key-a")
+            ws_test_client.cookies.set("qf_session", full_key)
             with ws_test_client.websocket_connect("/ws/tasks") as ws:
                 received = ws.receive_json()
                 assert received["task_id"] == "for-a"
@@ -218,14 +219,15 @@ class TestWebSocketCSWSH:
         test_session_sync.add(tenant)
         test_session_sync.commit()
         test_session_sync.refresh(tenant)
-        api_key = ApiKey(tenant_id = tenant.id, key = "origin-victim-key", is_active = True)
+        full_key, prefix, key_hash = generate_api_key()
+        api_key = ApiKey(tenant_id=tenant.id, prefix=prefix, key_hash=key_hash, is_active=True)
         test_session_sync.add(api_key)
         test_session_sync.commit()
 
         with pytest.raises(WebSocketDisconnect) as exc_info:
             with ws_test_client.websocket_connect(
                 "/ws/tasks",
-                cookies = {"qf_session": "origin-victim-key"},
+                cookies = {"qf_session": full_key},
                 headers = {"origin": "https://evil.example.com"},
             ):
                 pass
@@ -239,7 +241,8 @@ class TestWebSocketCSWSH:
         test_session_sync.add(tenant)
         test_session_sync.commit()
         test_session_sync.refresh(tenant)
-        api_key = ApiKey(tenant_id = tenant.id, key = "origin-ok-key", is_active = True)
+        full_key, prefix, key_hash = generate_api_key()
+        api_key = ApiKey(tenant_id=tenant.id, prefix=prefix, key_hash=key_hash, is_active=True)
         test_session_sync.add(api_key)
         test_session_sync.commit()
 
@@ -247,7 +250,7 @@ class TestWebSocketCSWSH:
         # accepts because the cookie is valid. We open and immediately close.
         with ws_test_client.websocket_connect(
             "/ws/tasks",
-            cookies = {"qf_session": "origin-ok-key"},
+            cookies = {"qf_session": full_key},
             headers = {"origin": "http://localhost:5173"},
         ) as ws:
             pass # Successfully accepted
@@ -265,14 +268,15 @@ class TestWebSocketCSWSH:
         test_session_sync.add(tenant)
         test_session_sync.commit()
         test_session_sync.refresh(tenant)
-        api_key = ApiKey(tenant_id = tenant.id, key = "no-origin-key", is_active = True)
+        full_key, prefix, key_hash = generate_api_key()
+        api_key = ApiKey(tenant_id=tenant.id, prefix=prefix, key_hash=key_hash, is_active=True)
         test_session_sync.add(api_key)
         test_session_sync.commit()
 
         # No Origin header sent - TestClient defaults don't set on unless asked.
         with ws_test_client.websocket_connect(
             "/ws/tasks",
-            cookies = {"qf_session": "no-origin-key"}, 
+            cookies = {"qf_session": full_key}, 
         ) as ws:
             pass
 

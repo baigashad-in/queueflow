@@ -1,41 +1,52 @@
+from typing import Optional
+
 from fastapi import Depends, HTTPException, Header, Request
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+
 from core.database import get_api_session
 from core.db_models import Tenant, ApiKey
-from typing import Optional
+from core.key_utils import parse_api_key, verify_api_key
 
 async def get_current_tenant(
         request: Request,
         api_key: Optional[str] = Header(None, alias = "X-API-Key"),
         session: AsyncSession = Depends(get_api_session),
 ) -> Tenant:
-    """Get Tenant from API key header or Session cookie."""
-
-    # Try header first (for programmatic API access)
-    key = api_key
-
-    # Fall back to cookie (for browser dashboard)
-    if not key:
-        key = request.cookies.get("qf_session")
-
-    if not key:
-        raise HTTPException(status_code=401, detail="Missing API key or session")
+    """Get Tenant from API key header or Session cookie.
     
+    Auth flow: parse the key into (prefix, secret), index-lookup by prefix,
+    then bcrypt-verify the full key against the stored hash. Same rejection
+    message for "prefix doesn't exist" and "prefix exists but hash doesn't
+    match" so attackers can't enumerate valid prefixes.
+    """
+
+    # Try header first (programmatic API access), then cookie (dashboard)
+    key = api_key or request.cookies.get("qf_session")
+
+    if not key:
+        raise HTTPException(status_code = 401, detail = "Missing API key or session")
+    
+    parsed = parse_api_key(key)
+    if not parsed:
+        raise HTTPException(status_code = 401, detail = "Invalid or inactive API key")
+    prefix, _secret = parsed
 
     result = await session.execute(
-        select(ApiKey).where(ApiKey.key == key, ApiKey.is_active == True)
+        select(ApiKey).where(ApiKey.prefix == prefix, ApiKey.is_active == True)
     )
+    
     api_key_record = result.scalar_one_or_none()
-    if not api_key_record:
-        raise HTTPException(status_code=401, detail="Invalid or inactive API key")
+    if not api_key_record or not verify_api_key(key, api_key_record.key_hash):
+        raise HTTPException(status_code = 401, detail="Invalid or inactive API key")
     
     tenant_result = await session.execute(
         select(Tenant).where(Tenant.id == api_key_record.tenant_id, Tenant.is_active == True)
     )
     tenant = tenant_result.scalar_one_or_none()
     if not tenant:
-        raise HTTPException(status_code=401, detail="Tenant not found or inactive")
+        raise HTTPException(status_code = 401, detail = "Tenant not found or inactive")
     
     return tenant
 

@@ -12,35 +12,38 @@ Covers:
 """
 import asyncio
 import uuid
-import pytest
 
 from httpx import AsyncClient, ASGITransport
 
 from api.main import app
+
 from core.db_models import ApiKey, Tenant, TaskRecord
 from core.models import TaskStatus
 from core.constants import HEARTBEAT_PREFIX
+from core.key_utils import generate_api_key
 
 
 # ────────────────────────────────────────────────────────────────────
 # Helpers (mirroring _make_tenant / _make_task from test_routes_extra.py)
 # ────────────────────────────────────────────────────────────────────
 
-async def _make_tenant(session, name=None, is_active=True, key=None):
+async def _make_tenant(session, name=None, is_active=True):
     tenant = Tenant(name=name or f"T-{uuid.uuid4().hex[:8]}", is_active=is_active)
     session.add(tenant)
     await session.commit()
     await session.refresh(tenant)
 
+    full_key, prefix, key_hash = generate_api_key()
     api_key = ApiKey(
         tenant_id=tenant.id,
-        key=key or f"key-{uuid.uuid4().hex[:16]}",
+        prefix=prefix,
+        key_hash=key_hash,
         is_active=True,
     )
     session.add(api_key)
     await session.commit()
     await session.refresh(api_key)
-    return tenant, api_key.key
+    return tenant, full_key
 
 
 def _build_client(session, api_key):

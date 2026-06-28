@@ -52,19 +52,27 @@ async def test_session(engine):
 
 @pytest.fixture
 async def test_tenant(test_session):
-    """Create a test tenant and API key for authentication."""
+    """Create a test tenant and API key for authentication.
+    
+    Returns a dict with 'tenant', 'api_key' (the DB row, prefix-only),
+    and 'cleartext_key' (the full key value, only available here because
+    we generated it). Tests authenticating against the API should use
+    cleartext_key in the X-API-Key header.
+    """
+    from core.key_utils import generate_api_key
+
     tenant = Tenant(name="TestTenant")
     test_session.add(tenant)
     await test_session.commit()
     await test_session.refresh(tenant)
 
-    # Create an API key for the tenant
-    api_key = ApiKey(tenant_id=tenant.id, key="test-api-key-123")
+    full_key, prefix, key_hash = generate_api_key()
+    api_key = ApiKey(tenant_id = tenant.id, prefix = prefix, key_hash = key_hash)
     test_session.add(api_key)
     await test_session.commit()
     await test_session.refresh(api_key)
 
-    return {"tenant": tenant, "api_key": api_key}
+    return {"tenant": tenant, "api_key": api_key, "cleartext_key": full_key}
 
 
 @pytest.fixture
@@ -76,7 +84,7 @@ async def client(test_session, test_tenant):
     async with AsyncClient(
         transport=transport,
         base_url="http://test",
-        headers={"X-API-Key": test_tenant["api_key"].key},
+        headers={"X-API-Key": test_tenant["cleartext_key"]},
     ) as client:
         yield client
 

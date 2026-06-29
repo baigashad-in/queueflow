@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     worker_concurrency: int = 3
 
+    # WebSocket limits
+    ws_max_connections_per_key: int = 5
+    ws_max_new_connections_per_minute: int = 20
+    ws_heartbeat_interval_seconds: int = 30
+    ws_heartbeat_timeout_seconds: int = 10
+
     # Grafana
     grafana_admin_password: str = "admin"
 

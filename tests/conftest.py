@@ -121,6 +121,7 @@ async def _fake_redis_impl(monkeypatch):
     import core.events
     import worker.heartbeat
     import core.rate_limiter
+    import core.ws_limits
  
     monkeypatch.setattr(core.queue, "redis_client", fake)
     monkeypatch.setattr(core.lock, "redis_client", fake)
@@ -129,7 +130,8 @@ async def _fake_redis_impl(monkeypatch):
     monkeypatch.setattr(core.events, "redis_client", fake)
     monkeypatch.setattr(worker.heartbeat, "redis_client", fake)
     monkeypatch.setattr(core.rate_limiter, "redis_client", fake)
- 
+    monkeypatch.setattr(core.ws_limits, "redis_client", fake)
+    
     yield fake
  
     await fake.flushall()
